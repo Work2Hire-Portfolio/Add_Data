@@ -24,6 +24,11 @@ STATIC_DIR = Path(__file__).parent / "static"
 async def deploy_portfolio_endpoint(
     file: UploadFile = File(...),
     repo_name: str = Form(...),
+    username: str = Form(...),
+    display_name: str | None = Form(default=None),
+    role: str | None = Form(default=None),
+    template_type: str | None = Form(default=None),
+    image: str | None = Form(default=None),
     collaborator: str | None = Form(default=None),
     collaborator_permission: str = Form(default="push"),
 ):
@@ -49,6 +54,11 @@ async def deploy_portfolio_endpoint(
     result = deploy_html_portfolio(
         html_content=html_content,
         repo_name=repo_name,
+        username=username,
+        display_name=display_name,
+        role=role,
+        template_type=template_type,
+        image=image,
         collaborator=collaborator or None,
         collaborator_permission=collaborator_permission or "push",
     )

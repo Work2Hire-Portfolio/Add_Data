@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 GITHUB_API_BASE = "https://api.github.com"
 ALLOWED_PERMISSIONS = {"pull", "triage", "push", "maintain", "admin"}
 HISTORY_DB_PATH = Path(os.getenv("DEPLOYMENT_HISTORY_DB", "deployment_history.sqlite3"))
+USERNAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
 load_dotenv()
 
 
@@ -40,6 +41,24 @@ class GitHubConfig:
         return self.repo_visibility.lower() == "private"
 
 
+@dataclass(frozen=True)
+class DirectoryConfig:
+    owner: str
+    repo: str
+    branch: str = "main"
+    data_path: str = "data/portfolios.json"
+    site_url: str = ""
+
+
+@dataclass(frozen=True)
+class PortfolioDirectoryEntry:
+    username: str
+    name: str
+    role: str
+    template_type: str
+    image: str = ""
+
+
 def get_github_config() -> GitHubConfig:
     token = os.getenv("GITHUB_TOKEN", "").strip().strip('"').strip("'")
     username = os.getenv("GITHUB_USERNAME", "").strip().strip('"').strip("'")
@@ -58,6 +77,36 @@ def get_github_config() -> GitHubConfig:
         repo_visibility=visibility,
         pages_branch=os.getenv("GITHUB_PAGES_BRANCH", "main").strip() or "main",
         repo_prefix=os.getenv("GITHUB_REPO_PREFIX", "").strip(),
+    )
+
+
+def get_directory_config() -> DirectoryConfig:
+    owner = os.getenv("DIRECTORY_REPO_OWNER", "").strip().strip('"').strip("'")
+    repo = os.getenv("DIRECTORY_REPO_NAME", "").strip().strip('"').strip("'")
+    site_url = os.getenv("DIRECTORY_SITE_URL", "").strip().strip('"').strip("'")
+
+    if not owner:
+        raise DeploymentError("config", "Missing required environment variable DIRECTORY_REPO_OWNER.")
+    if not repo:
+        raise DeploymentError("config", "Missing required environment variable DIRECTORY_REPO_NAME.")
+    if not site_url:
+        raise DeploymentError("config", "Missing required environment variable DIRECTORY_SITE_URL.")
+
+    branch = os.getenv("DIRECTORY_REPO_BRANCH", "main").strip() or "main"
+    data_path = os.getenv("DIRECTORY_DATA_PATH", "data/portfolios.json").strip().strip("/")
+    if not data_path:
+        raise DeploymentError("config", "DIRECTORY_DATA_PATH cannot be empty.")
+    if not re.fullmatch(r"[A-Za-z0-9._/\-]+", data_path):
+        raise DeploymentError("config", "DIRECTORY_DATA_PATH contains invalid characters.")
+    if not re.match(r"^https?://", site_url, flags=re.IGNORECASE):
+        raise DeploymentError("config", "DIRECTORY_SITE_URL must start with http:// or https://.")
+
+    return DirectoryConfig(
+        owner=owner,
+        repo=repo,
+        branch=branch,
+        data_path=data_path,
+        site_url=site_url.rstrip("/"),
     )
 
 
@@ -101,8 +150,31 @@ def validate_html_upload(html_content: str, filename: str | None = None) -> None
         raise DeploymentError("validate", "Uploaded file does not look like a valid HTML document.")
 
 
+def validate_username(username: str) -> str:
+    clean = username.strip().lower()
+    if not clean:
+        raise DeploymentError("validate", "Username is required for the public portfolio route.")
+    if not USERNAME_PATTERN.fullmatch(clean):
+        raise DeploymentError(
+            "validate",
+            "Username must use only lowercase letters, numbers, hyphens, or underscores.",
+        )
+    return clean
+
+
+def validate_public_url(url: str, field_name: str) -> str:
+    clean = url.strip()
+    if not re.match(r"^https?://", clean, flags=re.IGNORECASE):
+        raise DeploymentError("config", f"{field_name} must start with http:// or https://.")
+    return clean.rstrip("/")
+
+
 def pages_url_for(username: str, repo_name: str) -> str:
     return f"https://{username}.github.io/{repo_name}/"
+
+
+def directory_route_url_for(site_url: str, username: str) -> str:
+    return f"{validate_public_url(site_url, 'DIRECTORY_SITE_URL')}/{validate_username(username)}"
 
 
 def init_history_db(db_path: Path = HISTORY_DB_PATH) -> None:
@@ -241,29 +313,69 @@ class GitHubClient:
         }
 
     def _get_content_sha(self, repo_name: str, path: str) -> str | None:
-        url = f"{GITHUB_API_BASE}/repos/{self.config.username}/{repo_name}/contents/{path}"
-        response = self._request("GET", url, "upload_file")
+        return self._get_content_sha_for_repo(self.config.username, repo_name, path, "upload_file")
+
+    def _get_content_sha_for_repo(self, owner: str, repo_name: str, path: str, stage: str) -> str | None:
+        url = f"{GITHUB_API_BASE}/repos/{owner}/{repo_name}/contents/{path}"
+        response = self._request("GET", url, stage)
         if response.status_code == 404:
             return None
         if response.status_code != 200:
-            raise DeploymentError("upload_file", self._error_message(response, f"Failed to read existing {path}."))
+            raise DeploymentError(stage, self._error_message(response, f"Failed to read existing {path}."))
         data = response.json()
         return data.get("sha")
 
     def upload_content(self, repo_name: str, path: str, content: str, commit_message: str, stage: str = "upload_file") -> None:
-        sha = self._get_content_sha(repo_name, path)
+        self.upload_content_to_repo(
+            owner=self.config.username,
+            repo_name=repo_name,
+            path=path,
+            content=content,
+            commit_message=commit_message,
+            branch=self.config.pages_branch,
+            stage=stage,
+        )
+
+    def upload_content_to_repo(
+        self,
+        owner: str,
+        repo_name: str,
+        path: str,
+        content: str,
+        commit_message: str,
+        branch: str,
+        stage: str,
+    ) -> None:
+        sha = self._get_content_sha_for_repo(owner, repo_name, path, stage)
         payload: dict[str, Any] = {
             "message": commit_message,
             "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-            "branch": self.config.pages_branch,
+            "branch": branch,
         }
         if sha:
             payload["sha"] = sha
 
-        url = f"{GITHUB_API_BASE}/repos/{self.config.username}/{repo_name}/contents/{path}"
+        url = f"{GITHUB_API_BASE}/repos/{owner}/{repo_name}/contents/{path}"
         response = self._request("PUT", url, stage, json=payload)
         if response.status_code not in {200, 201}:
             raise DeploymentError(stage, self._error_message(response, f"Failed to upload {path}."))
+
+    def read_text_content_from_repo(self, owner: str, repo_name: str, path: str, branch: str, stage: str) -> str | None:
+        url = f"{GITHUB_API_BASE}/repos/{owner}/{repo_name}/contents/{path}"
+        response = self._request("GET", url, stage, params={"ref": branch})
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            raise DeploymentError(stage, self._error_message(response, f"Failed to read {path}."))
+
+        data = response.json()
+        encoded = data.get("content")
+        if not encoded:
+            raise DeploymentError(stage, f"{path} did not return file content.")
+        try:
+            return base64.b64decode(encoded).decode("utf-8")
+        except Exception as exc:
+            raise DeploymentError(stage, f"Could not decode {path} from GitHub.") from exc
 
     def enable_pages(self, repo_name: str) -> None:
         payload = {"source": {"branch": self.config.pages_branch, "path": "/"}}
@@ -299,13 +411,20 @@ class GitHubClient:
 def deploy_html_portfolio(
     html_content: str,
     repo_name: str,
+    username: str,
+    display_name: str | None = None,
+    role: str | None = None,
+    template_type: str | None = None,
+    image: str | None = None,
     collaborator: str | None = None,
     collaborator_permission: str = "push",
 ) -> dict[str, Any]:
     try:
         validate_html_upload(html_content)
         config = get_github_config()
+        directory_config = get_directory_config()
         sanitized_repo = sanitize_repo_name(repo_name, config.repo_prefix)
+        sanitized_username = validate_username(username)
         client = GitHubClient(config)
 
         final_repo_name = client.create_repo(sanitized_repo)
@@ -316,6 +435,19 @@ def deploy_html_portfolio(
         readme = f"# Portfolio Website\n\nThis portfolio was automatically deployed.\n\nLive site:\n{live_url}\n"
         client.upload_content(final_repo_name, "README.md", readme, "Add portfolio README", stage="upload_file")
         client.enable_pages(final_repo_name)
+        directory_entry = PortfolioDirectoryEntry(
+            username=sanitized_username,
+            name=(display_name or sanitized_username).strip(),
+            role=(role or "Portfolio").strip(),
+            template_type=(template_type or "custom").strip(),
+            image=(image or "").strip(),
+        )
+        public_route_url = sync_portfolio_to_directory_repo(
+            client=client,
+            directory_config=directory_config,
+            entry=directory_entry,
+            portfolio_url=live_url,
+        )
 
         collaborator_invited = False
         collaborator_value = collaborator.strip() if collaborator else None
@@ -327,6 +459,9 @@ def deploy_html_portfolio(
             "repo_name": final_repo_name,
             "repo_url": repo_url,
             "pages_url": live_url,
+            "username": sanitized_username,
+            "public_route_url": public_route_url,
+            "directory_repo_url": f"https://github.com/{directory_config.owner}/{directory_config.repo}",
             "collaborator_invited": collaborator_invited,
             "collaborator": collaborator_value,
             "collaborator_permission": collaborator_permission,
@@ -418,3 +553,88 @@ def history_as_json(db_path: Path = HISTORY_DB_PATH) -> str:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT * FROM deployments ORDER BY id DESC LIMIT 100").fetchall()
     return json.dumps([dict(row) for row in rows], indent=2)
+
+
+def upsert_portfolio_record(
+    portfolios: list[dict[str, Any]],
+    entry: PortfolioDirectoryEntry,
+    portfolio_url: str,
+) -> list[dict[str, Any]]:
+    next_portfolios = list(portfolios)
+    created_at = datetime.now(timezone.utc).date().isoformat()
+    updated = False
+
+    for index, current in enumerate(next_portfolios):
+        current_username = str((current or {}).get("username", "")).strip().lower()
+        if current_username != entry.username:
+            continue
+
+        next_portfolios[index] = {
+            **current,
+            "username": entry.username,
+            "name": entry.name,
+            "role": entry.role,
+            "template_type": entry.template_type,
+            "portfolio_url": portfolio_url,
+            "image": entry.image,
+            "is_active": True,
+            "created_at": current.get("created_at") or created_at,
+        }
+        updated = True
+        break
+
+    if not updated:
+        next_portfolios.append(
+            {
+                "username": entry.username,
+                "name": entry.name,
+                "role": entry.role,
+                "template_type": entry.template_type,
+                "portfolio_url": portfolio_url,
+                "image": entry.image,
+                "is_active": True,
+                "created_at": created_at,
+            }
+        )
+
+    next_portfolios.sort(key=lambda item: str(item.get("username", "")))
+    return next_portfolios
+
+
+def sync_portfolio_to_directory_repo(
+    client: GitHubClient,
+    directory_config: DirectoryConfig,
+    entry: PortfolioDirectoryEntry,
+    portfolio_url: str,
+) -> str:
+    stage = "sync_directory"
+    raw = client.read_text_content_from_repo(
+        owner=directory_config.owner,
+        repo_name=directory_config.repo,
+        path=directory_config.data_path,
+        branch=directory_config.branch,
+        stage=stage,
+    )
+
+    if raw is None:
+        portfolios: list[dict[str, Any]] = []
+    else:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise DeploymentError(stage, f"{directory_config.data_path} does not contain valid JSON.") from exc
+        if not isinstance(parsed, list):
+            raise DeploymentError(stage, f"{directory_config.data_path} must contain a JSON array.")
+        portfolios = parsed
+
+    next_portfolios = upsert_portfolio_record(portfolios, entry, portfolio_url)
+    client.upload_content_to_repo(
+        owner=directory_config.owner,
+        repo_name=directory_config.repo,
+        path=directory_config.data_path,
+        content=json.dumps(next_portfolios, indent=2) + "\n",
+        commit_message=f"Publish portfolio route for {entry.username}",
+        branch=directory_config.branch,
+        stage=stage,
+    )
+    return directory_route_url_for(directory_config.site_url, entry.username)

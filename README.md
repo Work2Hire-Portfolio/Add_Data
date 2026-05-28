@@ -5,8 +5,26 @@ This project is a simple GitHub + Vercel workflow for a portfolio hosting platfo
 - `https://yourportfolio.work/` shows the main dashboard.
 - `https://yourportfolio.work/:username` redirects to the user's live portfolio.
 - The homepage portfolio grid is generated from `data/portfolios.json`.
+- The deploy app now creates the GitHub Pages repo and updates the public Vercel directory repo automatically.
 
-No database is required right now. Add portfolio metadata to JSON, push to GitHub, and let Vercel redeploy the main site.
+No database is required right now. The admin deploy app commits the portfolio metadata into the directory repo through the GitHub API, then Vercel redeploys the main site.
+
+## Required environment variables
+
+```text
+GITHUB_TOKEN=
+GITHUB_USERNAME=
+GITHUB_REPO_VISIBILITY=public
+GITHUB_PAGES_BRANCH=main
+GITHUB_REPO_PREFIX=portfolio-
+DIRECTORY_REPO_OWNER=
+DIRECTORY_REPO_NAME=
+DIRECTORY_REPO_BRANCH=main
+DIRECTORY_DATA_PATH=data/portfolios.json
+DIRECTORY_SITE_URL=https://your-project.vercel.app
+```
+
+`DIRECTORY_*` values point to the GitHub repo that backs the public Vercel site, so `/username` routes can be updated automatically after each deploy.
 
 ## Project Structure
 

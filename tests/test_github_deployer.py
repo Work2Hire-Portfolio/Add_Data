@@ -1,14 +1,25 @@
 import base64
+import json
+import sys
+from pathlib import Path
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from github_deployer import (
+    DirectoryConfig,
     DeploymentError,
     GitHubClient,
     GitHubConfig,
+    PortfolioDirectoryEntry,
+    directory_route_url_for,
     pages_url_for,
     sanitize_repo_name,
+    sync_portfolio_to_directory_repo,
+    upsert_portfolio_record,
     validate_html_upload,
+    validate_username,
 )
 
 
@@ -63,6 +74,15 @@ def test_validate_html_upload_rejects_non_html_extension():
 def test_validate_html_upload_rejects_non_html_content():
     with pytest.raises(DeploymentError):
         validate_html_upload("plain text", "site.html")
+
+
+def test_validate_username_normalizes_to_lowercase():
+    assert validate_username("Ansh_Prasad") == "ansh_prasad"
+
+
+def test_validate_username_rejects_invalid_characters():
+    with pytest.raises(DeploymentError):
+        validate_username("ansh prasad")
 
 
 def test_create_repo_payload():
@@ -126,6 +146,10 @@ def test_pages_url_generation():
     assert pages_url_for("octocat", "portfolio-demo") == "https://octocat.github.io/portfolio-demo/"
 
 
+def test_directory_route_url_generation():
+    assert directory_route_url_for("https://portfolio.example.com/", "anshprasad") == "https://portfolio.example.com/anshprasad"
+
+
 def test_enable_pages_payload():
     session = FakeSession([FakeResponse(201, {})])
     client = GitHubClient(config(), session=session)
@@ -149,6 +173,93 @@ def test_enable_pages_conflict_updates_existing_pages_settings():
     assert session.calls[1]["method"] == "PUT"
     assert session.calls[1]["url"] == "https://api.github.com/repos/octocat/portfolio-demo/pages"
     assert session.calls[1]["json"] == {"source": {"branch": "main", "path": "/"}}
+
+
+def test_upsert_portfolio_record_updates_existing_user_and_preserves_created_at():
+    entry = PortfolioDirectoryEntry(
+        username="anshprasad",
+        name="Ansh Prasad",
+        role="Frontend Developer",
+        template_type="modern-professional",
+        image="/assets/users/anshprasad.png",
+    )
+    portfolios = [
+        {
+            "username": "anshprasad",
+            "name": "Old Name",
+            "role": "Old Role",
+            "template_type": "old-template",
+            "portfolio_url": "https://old.example.com",
+            "image": "",
+            "is_active": False,
+            "created_at": "2026-01-01",
+        }
+    ]
+
+    updated = upsert_portfolio_record(portfolios, entry, "https://octocat.github.io/portfolio-ansh/")
+
+    assert updated == [
+        {
+            "username": "anshprasad",
+            "name": "Ansh Prasad",
+            "role": "Frontend Developer",
+            "template_type": "modern-professional",
+            "portfolio_url": "https://octocat.github.io/portfolio-ansh/",
+            "image": "/assets/users/anshprasad.png",
+            "is_active": True,
+            "created_at": "2026-01-01",
+        }
+    ]
+
+
+def test_sync_portfolio_to_directory_repo_updates_remote_json():
+    existing_payload = base64.b64encode(
+        (
+            '[{"username":"riya","name":"Riya","role":"Designer","template_type":"creative",'
+            '"portfolio_url":"https://riya.example.com","image":"","is_active":true,"created_at":"2026-05-20"}]'
+        ).encode("utf-8")
+    ).decode("ascii")
+    session = FakeSession(
+        [
+            FakeResponse(200, {"content": existing_payload}),
+            FakeResponse(200, {"sha": "abc123"}),
+            FakeResponse(200, {}),
+        ]
+    )
+    client = GitHubClient(config(), session=session)
+    directory = DirectoryConfig(
+        owner="orgname",
+        repo="portfolio-directory",
+        branch="main",
+        data_path="data/portfolios.json",
+        site_url="https://portfolio.example.com",
+    )
+    entry = PortfolioDirectoryEntry(
+        username="anshprasad",
+        name="Ansh Prasad",
+        role="Frontend Developer",
+        template_type="modern-professional",
+        image="",
+    )
+
+    public_url = sync_portfolio_to_directory_repo(
+        client=client,
+        directory_config=directory,
+        entry=entry,
+        portfolio_url="https://octocat.github.io/portfolio-ansh/",
+    )
+
+    assert public_url == "https://portfolio.example.com/anshprasad"
+    put_call = session.calls[2]
+    assert put_call["method"] == "PUT"
+    assert put_call["url"] == "https://api.github.com/repos/orgname/portfolio-directory/contents/data/portfolios.json"
+    payload = put_call["json"]
+    decoded = base64.b64decode(payload["content"]).decode("utf-8")
+    parsed = json.loads(decoded)
+    assert [item["username"] for item in parsed] == ["anshprasad", "riya"]
+    assert parsed[0]["portfolio_url"] == "https://octocat.github.io/portfolio-ansh/"
+    assert payload["branch"] == "main"
+    assert payload["sha"] == "abc123"
 
 
 def test_collaborator_invite_payload():
