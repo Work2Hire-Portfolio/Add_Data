@@ -1,0 +1,32 @@
+[
+  {
+    "username": "anshprasad",
+    "name": "Ansh Prasad",
+    "role": "Frontend Developer",
+    "template_type": "modern-professional",
+    "portfolio_url": "https://anshprasad.github.io/portfolio",
+    "image": "/assets/users/anshprasad.svg",
+    "is_active": true,
+    "created_at": "2026-05-28"
+  },
+  {
+    "username": "riyasharma",
+    "name": "Riya Sharma",
+    "role": "UI Engineer",
+    "template_type": "creative-showcase",
+    "portfolio_url": "https://riyasharma-portfolio.vercel.app",
+    "image": "",
+    "is_active": true,
+    "created_at": "2026-05-28"
+  },
+  {
+    "username": "devansh_resume",
+    "name": "Devansh Kumar",
+    "role": "Full Stack Developer",
+    "template_type": "minimal-resume",
+    "portfolio_url": "https://devansh-portfolio.netlify.app",
+    "image": "",
+    "is_active": false,
+    "created_at": "2026-05-28"
+  }
+]

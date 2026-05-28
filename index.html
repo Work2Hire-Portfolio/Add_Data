@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YourPortfolio / Work to Hire Portfolio Showcase</title>
+    <meta
+      name="description"
+      content="Discover live Work to Hire and YourPortfolio sites, browse active creators, and share clean yourportfolio.work/username links."
+    />
+    <meta property="og:title" content="YourPortfolio / Work to Hire Portfolio Showcase" />
+    <meta
+      property="og:description"
+      content="Browse active portfolio launches, template styles, and public showcase links from YourPortfolio."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://yourportfolio.work" />
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel hero">
+        <div class="heading">
+          <p class="eyebrow">YourPortfolio.work</p>
+          <h1>YourPortfolio / Work to Hire Portfolio Showcase</h1>
+          <p class="lead">
+            One homepage for your brand, one clean public link for every user, and a simple JSON workflow
+            your team can scale before you add an admin panel.
+          </p>
+        </div>
+
+        <div class="hero-grid">
+          <article class="mini-card">
+            <h2>Brand Hub</h2>
+            <p>Publish your main dashboard on Vercel and keep your showcase organized under one domain.</p>
+          </article>
+          <article class="mini-card">
+            <h2>Work to Hire</h2>
+            <p>Feature active creators, highlight template styles, and send people to a shareable username URL.</p>
+          </article>
+          <article class="mini-card">
+            <h2>Future Admin Ready</h2>
+            <p>The data model already supports image, status, template, role, and external portfolio hosting.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="heading compact">
+          <p class="eyebrow">Template Previews</p>
+          <h2>Supported portfolio directions</h2>
+          <p class="section-copy">
+            Keep using any hosting provider you want for the final portfolio site. The dashboard just needs each
+            public URL and a little metadata.
+          </p>
+        </div>
+
+        <div class="template-grid">
+          <article class="template-card">
+            <span class="template-badge">Modern Professional</span>
+            <h3>Clean hiring-focused layout</h3>
+            <p>Best for frontend, backend, product, and design candidates who want a polished presentation.</p>
+          </article>
+          <article class="template-card">
+            <span class="template-badge">Creative Showcase</span>
+            <h3>Visual storytelling portfolio</h3>
+            <p>Great for creators who need imagery, motion, and case-study style browsing on first open.</p>
+          </article>
+          <article class="template-card">
+            <span class="template-badge">Minimal Resume</span>
+            <h3>Fast and lightweight profile</h3>
+            <p>Useful for static HTML or GitHub Pages deployments where speed and clarity matter most.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="heading compact">
+          <p class="eyebrow">Active Portfolios</p>
+          <h2>Live user directory</h2>
+          <p class="section-copy">
+            This section is rendered from <code>/data/portfolios.json</code>. Add a new entry, push to GitHub, and
+            Vercel will update the homepage automatically.
+          </p>
+        </div>
+
+        <div id="portfolioFeedback" class="status-message" aria-live="polite">
+          Loading live portfolios...
+        </div>
+        <div id="portfolioGrid" class="portfolio-grid" hidden></div>
+      </section>
+    </main>
+  </body>
+</html>

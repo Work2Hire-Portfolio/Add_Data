@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Deploy Portfolio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div class="heading">
+          <p class="eyebrow">GitHub Pages</p>
+          <h1>Deploy Portfolio</h1>
+        </div>
+
+        <form id="deployForm" class="form">
+          <label class="field">
+            <span>Upload HTML file</span>
+            <input id="file" name="file" type="file" accept=".html,text/html" required />
+          </label>
+
+          <label class="field">
+            <span>Portfolio/repository name</span>
+            <input id="repoName" name="repo_name" type="text" placeholder="Ansh Prasad Portfolio" required />
+          </label>
+
+          <label class="check">
+            <input id="shareAccess" type="checkbox" />
+            <span>Share repository access with someone</span>
+          </label>
+
+          <div id="collaboratorFields" class="collaborator hidden">
+            <label class="field">
+              <span>GitHub username of collaborator</span>
+              <input id="collaborator" name="collaborator" type="text" placeholder="clientusername" />
+              <small>GitHub username is preferred. Email invites are not supported by GitHub's collaborator API.</small>
+            </label>
+
+            <label class="field">
+              <span>Permission</span>
+              <select id="collaboratorPermission" name="collaborator_permission">
+                <option value="pull">Read only</option>
+                <option value="push" selected>Write access</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+          </div>
+
+          <button id="submitButton" class="primary" type="submit">Deploy Portfolio</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="heading compact">
+          <p class="eyebrow">Existing repository</p>
+          <h2>Enable GitHub Pages</h2>
+        </div>
+
+        <form id="pagesForm" class="form inline-form">
+          <label class="field">
+            <span>Repository name</span>
+            <input id="pagesRepoName" name="repo_name" type="text" placeholder="portfolio-ansh-prasad" required />
+          </label>
+          <button id="pagesButton" class="secondary" type="submit">Enable Pages</button>
+        </form>
+      </section>
+
+      <section id="result" class="panel result hidden" aria-live="polite"></section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
