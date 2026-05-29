@@ -1,87 +1,251 @@
 from __future__ import annotations
 
+import hmac
+import json
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+import streamlit as st
 
 from github_deployer import (
+    HISTORY_DB_PATH,
     check_github_auth,
     check_repo_create_access,
     deploy_html_portfolio,
     enable_pages_for_existing_repo,
-    validate_html_upload,
+    init_history_db,
 )
 
 
-app = FastAPI(title="GitHub Portfolio Deployer")
+APP_TITLE = "Portfolio Deployment Admin"
+APP_DESCRIPTION = (
+    "Upload a portfolio HTML file, publish it to GitHub Pages, and sync the public username route."
+)
 
-STATIC_DIR = Path(__file__).parent / "static"
 
-
-@app.post("/api/deploy-portfolio")
-async def deploy_portfolio_endpoint(
-    file: UploadFile = File(...),
-    repo_name: str = Form(...),
-    username: str = Form(...),
-    display_name: str | None = Form(default=None),
-    role: str | None = Form(default=None),
-    template_type: str | None = Form(default=None),
-    image: str | None = Form(default=None),
-    collaborator: str | None = Form(default=None),
-    collaborator_permission: str = Form(default="push"),
-):
+def _get_secret(name: str, default: str = "") -> str:
     try:
-        if not file.filename or not file.filename.lower().endswith(".html"):
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "stage": "validate", "error": "Only .html files are accepted."},
-            )
-        raw = await file.read()
-        html_content = raw.decode("utf-8")
-        validate_html_upload(html_content, file.filename)
-    except UnicodeDecodeError:
-        return JSONResponse(
-            status_code=400,
-            content={"success": False, "stage": "validate", "error": "HTML file must be UTF-8 encoded."},
+        value = st.secrets.get(name, default)
+    except Exception:
+        value = default
+    return str(value).strip()
+
+
+def _is_auth_configured() -> bool:
+    return bool(_get_secret("APP_LOGIN_USER")) and bool(_get_secret("APP_LOGIN_PASSWORD"))
+
+
+def _credentials_match(username: str, password: str) -> bool:
+    expected_username = _get_secret("APP_LOGIN_USER")
+    expected_password = _get_secret("APP_LOGIN_PASSWORD")
+    return hmac.compare_digest(username, expected_username) and hmac.compare_digest(password, expected_password)
+
+
+def _require_login() -> None:
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not _is_auth_configured():
+        st.warning(
+            "Login protection is not active yet. Add `APP_LOGIN_USER` and `APP_LOGIN_PASSWORD` in Streamlit Secrets."
         )
-    except Exception as exc:
-        stage = getattr(exc, "stage", "validate")
-        message = getattr(exc, "message", str(exc))
-        return JSONResponse(status_code=400, content={"success": False, "stage": stage, "error": message})
+        return
 
-    result = deploy_html_portfolio(
-        html_content=html_content,
-        repo_name=repo_name,
-        username=username,
-        display_name=display_name,
-        role=role,
-        template_type=template_type,
-        image=image,
-        collaborator=collaborator or None,
-        collaborator_permission=collaborator_permission or "push",
+    if st.session_state.authenticated:
+        return
+
+    st.subheader("Login Required")
+    st.write("Enter your user ID and password to open the deployment dashboard.")
+    with st.form("login_form"):
+        username = st.text_input("User ID")
+        password = st.text_input("Password", type="password")
+        login_submitted = st.form_submit_button("Login", use_container_width=True)
+
+    if login_submitted:
+        if _credentials_match(username, password):
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Invalid user ID or password.")
+
+    st.stop()
+
+
+def _render_status_card(title: str, payload: dict) -> None:
+    success = bool(payload.get("success"))
+    box = st.success if success else st.error
+    box(title if success else f"{title} failed")
+
+    if success:
+        if payload.get("message"):
+            st.write(payload["message"])
+    else:
+        stage = payload.get("stage", "unknown")
+        error = payload.get("error", "Unknown error")
+        st.write(f"Stage: `{stage}`")
+        st.write(f"Error: `{error}`")
+
+    filtered = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"success", "message", "stage", "error"}
+    }
+    if filtered:
+        st.json(filtered)
+
+
+def _render_deploy_result(payload: dict) -> None:
+    if not payload.get("success"):
+        _render_status_card("Deployment", payload)
+        return
+
+    st.success("Portfolio deployed successfully.")
+    st.write(f"Repository: {payload.get('repo_url', 'Not available')}")
+    st.write(f"GitHub Pages URL: {payload.get('pages_url', 'Not available')}")
+    if payload.get("public_route_url"):
+        st.write(f"Public username URL: {payload['public_route_url']}")
+
+    collaborator = payload.get("collaborator")
+    if payload.get("collaborator_invited") and collaborator:
+        st.write(f"Collaborator invite sent to `{collaborator}`.")
+
+    with st.expander("Full response"):
+        st.json(payload)
+
+
+def _load_recent_history(limit: int = 20) -> list[dict]:
+    import sqlite3
+
+    init_history_db(HISTORY_DB_PATH)
+    with sqlite3.connect(HISTORY_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM deployments ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+st.set_page_config(page_title=APP_TITLE, page_icon=":rocket:", layout="centered")
+
+_require_login()
+
+st.title(APP_TITLE)
+st.caption(APP_DESCRIPTION)
+
+with st.sidebar:
+    if _is_auth_configured():
+        st.success("Logged in")
+        if st.button("Logout", use_container_width=True):
+            st.session_state.authenticated = False
+            st.rerun()
+
+    st.subheader("Required secrets")
+    st.code(
+        "\n".join(
+            [
+                "APP_LOGIN_USER=...",
+                "APP_LOGIN_PASSWORD=...",
+                "GITHUB_TOKEN=...",
+                "GITHUB_USERNAME=...",
+                "GITHUB_REPO_VISIBILITY=public",
+                "GITHUB_PAGES_BRANCH=main",
+                "GITHUB_REPO_PREFIX=portfolio-",
+                "DIRECTORY_REPO_OWNER=...",
+                "DIRECTORY_REPO_NAME=...",
+                "DIRECTORY_REPO_BRANCH=main",
+                "DIRECTORY_DATA_PATH=data/portfolios.json",
+                "DIRECTORY_SITE_URL=https://your-site.vercel.app",
+            ]
+        ),
+        language="bash",
     )
-    return JSONResponse(status_code=200 if result.get("success") else 400, content=result)
+    st.write("Add these in Streamlit App Settings -> Secrets before deploying.")
 
+col1, col2 = st.columns(2)
 
-@app.post("/api/enable-pages")
-async def enable_pages_endpoint(repo_name: str = Form(...)):
-    result = enable_pages_for_existing_repo(repo_name)
-    return JSONResponse(status_code=200 if result.get("success") else 400, content=result)
+with col1:
+    if st.button("Check GitHub auth", use_container_width=True):
+        _render_status_card("GitHub auth", check_github_auth())
 
+with col2:
+    if st.button("Check repo create access", use_container_width=True):
+        _render_status_card("Repository access", check_repo_create_access())
 
-@app.get("/api/github-auth-check")
-async def github_auth_check_endpoint():
-    result = check_github_auth()
-    return JSONResponse(status_code=200 if result.get("success") else 400, content=result)
+st.divider()
 
+st.subheader("Deploy new portfolio")
 
-@app.get("/api/repo-create-check")
-async def repo_create_check_endpoint():
-    result = check_repo_create_access()
-    return JSONResponse(status_code=200 if result.get("success") else 400, content=result)
+with st.form("deploy_form"):
+    uploaded_file = st.file_uploader("Portfolio HTML file", type=["html"])
+    repo_name = st.text_input("Portfolio/repository name", placeholder="Ansh Prasad Portfolio")
+    username = st.text_input("Public username route", placeholder="anshprasad")
+    display_name = st.text_input("Display name", placeholder="Ansh Prasad")
+    role = st.text_input("Role", placeholder="Frontend Developer")
+    template_type = st.text_input("Template type", placeholder="modern-professional")
+    image = st.text_input("Preview image path", placeholder="/assets/users/anshprasad.png")
+    share_access = st.checkbox("Share repository access with someone")
+    collaborator = ""
+    collaborator_permission = "push"
+    if share_access:
+        collaborator = st.text_input("Collaborator GitHub username", placeholder="clientusername")
+        collaborator_permission = st.selectbox(
+            "Collaborator permission",
+            options=["pull", "push", "admin"],
+            index=1,
+        )
 
+    deploy_submitted = st.form_submit_button("Deploy portfolio", use_container_width=True)
 
-if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+if deploy_submitted:
+    if uploaded_file is None:
+        st.error("Upload an HTML file first.")
+    else:
+        try:
+            html_content = uploaded_file.getvalue().decode("utf-8")
+        except UnicodeDecodeError:
+            st.error("The HTML file must be UTF-8 encoded.")
+        else:
+            result = deploy_html_portfolio(
+                html_content=html_content,
+                repo_name=repo_name,
+                username=username,
+                display_name=display_name or None,
+                role=role or None,
+                template_type=template_type or None,
+                image=image or None,
+                collaborator=collaborator or None,
+                collaborator_permission=collaborator_permission,
+            )
+            _render_deploy_result(result)
+
+st.divider()
+
+st.subheader("Enable GitHub Pages for an existing repository")
+with st.form("pages_form"):
+    existing_repo_name = st.text_input("Existing repository name", placeholder="portfolio-ansh-prasad")
+    pages_submitted = st.form_submit_button("Enable GitHub Pages", use_container_width=True)
+
+if pages_submitted:
+    _render_status_card("Enable GitHub Pages", enable_pages_for_existing_repo(existing_repo_name))
+
+st.divider()
+
+st.subheader("Recent deployment history")
+
+try:
+    history_rows = _load_recent_history()
+except Exception as exc:
+    st.info(f"History is not available yet: {exc}")
+else:
+    if not history_rows:
+        st.info("No deployments have been recorded yet.")
+    else:
+        st.dataframe(history_rows, use_container_width=True, hide_index=True)
+        with st.expander("History JSON"):
+            st.code(json.dumps(history_rows, indent=2), language="json")
+
+st.divider()
+
+st.subheader("Streamlit deploy entrypoint")
+st.code("Main file path: app.py", language="text")
+st.write(f"Working directory: `{Path(__file__).parent}`")
