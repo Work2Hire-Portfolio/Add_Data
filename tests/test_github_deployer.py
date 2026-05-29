@@ -13,6 +13,7 @@ from github_deployer import (
     GitHubClient,
     GitHubConfig,
     PortfolioDirectoryEntry,
+    get_config_value,
     directory_route_url_for,
     pages_url_for,
     sanitize_repo_name,
@@ -83,6 +84,20 @@ def test_validate_username_normalizes_to_lowercase():
 def test_validate_username_rejects_invalid_characters():
     with pytest.raises(DeploymentError):
         validate_username("ansh prasad")
+
+
+def test_get_config_value_prefers_environment_over_streamlit_secrets(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "env-token")
+    monkeypatch.setattr("github_deployer._load_streamlit_secrets", lambda: {"GITHUB_TOKEN": "secret-token"})
+
+    assert get_config_value("GITHUB_TOKEN") == "env-token"
+
+
+def test_get_config_value_uses_streamlit_secrets_when_environment_missing(monkeypatch):
+    monkeypatch.delenv("DIRECTORY_SITE_URL", raising=False)
+    monkeypatch.setattr("github_deployer._load_streamlit_secrets", lambda: {"DIRECTORY_SITE_URL": "https://demo.vercel.app"})
+
+    assert get_config_value("DIRECTORY_SITE_URL") == "https://demo.vercel.app"
 
 
 def test_create_repo_payload():

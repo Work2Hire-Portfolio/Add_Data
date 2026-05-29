@@ -26,6 +26,29 @@ DIRECTORY_SITE_URL=https://your-project.vercel.app
 
 `DIRECTORY_*` values point to the GitHub repo that backs the public Vercel site, so `/username` routes can be updated automatically after each deploy.
 
+## Streamlit secrets support
+
+If you host the admin app on Streamlit, the same config keys can be stored in `.streamlit/secrets.toml` or in the app's Secrets panel.
+
+```toml
+GITHUB_TOKEN = "your_token"
+GITHUB_USERNAME = "your_username"
+GITHUB_REPO_VISIBILITY = "public"
+GITHUB_PAGES_BRANCH = "main"
+GITHUB_REPO_PREFIX = "portfolio-"
+DIRECTORY_REPO_OWNER = "your-owner"
+DIRECTORY_REPO_NAME = "your-vercel-repo"
+DIRECTORY_REPO_BRANCH = "main"
+DIRECTORY_DATA_PATH = "data/portfolios.json"
+DIRECTORY_SITE_URL = "https://your-project.vercel.app"
+```
+
+Config loading order is:
+
+- environment variable first
+- Streamlit secret second
+- default value last where supported
+
 ## Project Structure
 
 ```text

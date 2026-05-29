@@ -59,15 +59,44 @@ class PortfolioDirectoryEntry:
     image: str = ""
 
 
+def _load_streamlit_secrets() -> dict[str, Any]:
+    try:
+        import streamlit as st
+    except ImportError:
+        return {}
+
+    try:
+        secrets = getattr(st, "secrets", None)
+        if not secrets:
+            return {}
+        return dict(secrets)
+    except Exception:
+        return {}
+
+
+def get_config_value(name: str, default: str = "") -> str:
+    env_value = os.getenv(name)
+    if env_value is not None and str(env_value).strip() != "":
+        return str(env_value).strip().strip('"').strip("'")
+
+    secrets = _load_streamlit_secrets()
+    secret_value = secrets.get(name)
+    if secret_value is None:
+        return default
+
+    clean = str(secret_value).strip().strip('"').strip("'")
+    return clean or default
+
+
 def get_github_config() -> GitHubConfig:
-    token = os.getenv("GITHUB_TOKEN", "").strip().strip('"').strip("'")
-    username = os.getenv("GITHUB_USERNAME", "").strip().strip('"').strip("'")
+    token = get_config_value("GITHUB_TOKEN")
+    username = get_config_value("GITHUB_USERNAME")
     if not token:
         raise DeploymentError("config", "Missing required environment variable GITHUB_TOKEN.")
     if not username:
         raise DeploymentError("config", "Missing required environment variable GITHUB_USERNAME.")
 
-    visibility = os.getenv("GITHUB_REPO_VISIBILITY", "public").strip().lower()
+    visibility = get_config_value("GITHUB_REPO_VISIBILITY", "public").lower()
     if visibility not in {"public", "private"}:
         raise DeploymentError("config", "GITHUB_REPO_VISIBILITY must be either public or private.")
 
@@ -75,15 +104,15 @@ def get_github_config() -> GitHubConfig:
         token=token,
         username=username,
         repo_visibility=visibility,
-        pages_branch=os.getenv("GITHUB_PAGES_BRANCH", "main").strip() or "main",
-        repo_prefix=os.getenv("GITHUB_REPO_PREFIX", "").strip(),
+        pages_branch=get_config_value("GITHUB_PAGES_BRANCH", "main") or "main",
+        repo_prefix=get_config_value("GITHUB_REPO_PREFIX"),
     )
 
 
 def get_directory_config() -> DirectoryConfig:
-    owner = os.getenv("DIRECTORY_REPO_OWNER", "").strip().strip('"').strip("'")
-    repo = os.getenv("DIRECTORY_REPO_NAME", "").strip().strip('"').strip("'")
-    site_url = os.getenv("DIRECTORY_SITE_URL", "").strip().strip('"').strip("'")
+    owner = get_config_value("DIRECTORY_REPO_OWNER")
+    repo = get_config_value("DIRECTORY_REPO_NAME")
+    site_url = get_config_value("DIRECTORY_SITE_URL")
 
     if not owner:
         raise DeploymentError("config", "Missing required environment variable DIRECTORY_REPO_OWNER.")
@@ -92,8 +121,8 @@ def get_directory_config() -> DirectoryConfig:
     if not site_url:
         raise DeploymentError("config", "Missing required environment variable DIRECTORY_SITE_URL.")
 
-    branch = os.getenv("DIRECTORY_REPO_BRANCH", "main").strip() or "main"
-    data_path = os.getenv("DIRECTORY_DATA_PATH", "data/portfolios.json").strip().strip("/")
+    branch = get_config_value("DIRECTORY_REPO_BRANCH", "main") or "main"
+    data_path = get_config_value("DIRECTORY_DATA_PATH", "data/portfolios.json").strip("/")
     if not data_path:
         raise DeploymentError("config", "DIRECTORY_DATA_PATH cannot be empty.")
     if not re.fullmatch(r"[A-Za-z0-9._/\-]+", data_path):
