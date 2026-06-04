@@ -103,6 +103,8 @@ def _render_deploy_result(payload: dict) -> None:
     st.write(f"GitHub Pages URL: {payload.get('pages_url', 'Not available')}")
     if payload.get("public_route_url"):
         st.write(f"Public username URL: {payload['public_route_url']}")
+    elif not payload.get("directory_sync_enabled"):
+        st.info("Directory sync is not configured, so only the GitHub repo and GitHub Pages link were created.")
 
     collaborator = payload.get("collaborator")
     if payload.get("collaborator_invited") and collaborator:
@@ -174,25 +176,34 @@ with col2:
 st.divider()
 
 st.subheader("Deploy new portfolio")
+st.caption("Required: HTML file, repository name, and username. Everything else is optional.")
 
 with st.form("deploy_form"):
     uploaded_file = st.file_uploader("Portfolio HTML file", type=["html"])
     repo_name = st.text_input("Portfolio/repository name", placeholder="Ansh Prasad Portfolio")
     username = st.text_input("Public username route", placeholder="anshprasad")
-    display_name = st.text_input("Display name", placeholder="Ansh Prasad")
-    role = st.text_input("Role", placeholder="Frontend Developer")
-    template_type = st.text_input("Template type", placeholder="modern-professional")
-    image = st.text_input("Preview image path", placeholder="/assets/users/anshprasad.png")
-    share_access = st.checkbox("Share repository access with someone")
+    display_name = ""
+    role = ""
+    template_type = ""
+    image = ""
+    share_access = False
     collaborator = ""
     collaborator_permission = "push"
-    if share_access:
-        collaborator = st.text_input("Collaborator GitHub username", placeholder="clientusername")
-        collaborator_permission = st.selectbox(
-            "Collaborator permission",
-            options=["pull", "push", "admin"],
-            index=1,
-        )
+
+    with st.expander("Optional details for directory listing and sharing"):
+        st.caption("You can leave all of these blank if you only want the GitHub repo link and GitHub Pages portfolio link.")
+        display_name = st.text_input("Display name", placeholder="Ansh Prasad")
+        role = st.text_input("Role", placeholder="Frontend Developer")
+        template_type = st.text_input("Template type", placeholder="custom")
+        image = st.text_input("Preview image path", placeholder="/assets/users/anshprasad.png")
+        share_access = st.checkbox("Share repository access with someone")
+        if share_access:
+            collaborator = st.text_input("Collaborator GitHub username", placeholder="clientusername")
+            collaborator_permission = st.selectbox(
+                "Collaborator permission",
+                options=["pull", "push", "admin"],
+                index=1,
+            )
 
     deploy_submitted = st.form_submit_button("Deploy portfolio", use_container_width=True)
 

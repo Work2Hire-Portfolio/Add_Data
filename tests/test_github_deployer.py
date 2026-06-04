@@ -13,6 +13,7 @@ from github_deployer import (
     GitHubClient,
     GitHubConfig,
     PortfolioDirectoryEntry,
+    get_optional_directory_config,
     get_config_value,
     directory_route_url_for,
     pages_url_for,
@@ -98,6 +99,15 @@ def test_get_config_value_uses_streamlit_secrets_when_environment_missing(monkey
     monkeypatch.setattr("github_deployer._load_streamlit_secrets", lambda: {"DIRECTORY_SITE_URL": "https://demo.vercel.app"})
 
     assert get_config_value("DIRECTORY_SITE_URL") == "https://demo.vercel.app"
+
+
+def test_get_optional_directory_config_returns_none_when_directory_sync_is_not_configured(monkeypatch):
+    monkeypatch.delenv("DIRECTORY_REPO_OWNER", raising=False)
+    monkeypatch.delenv("DIRECTORY_REPO_NAME", raising=False)
+    monkeypatch.delenv("DIRECTORY_SITE_URL", raising=False)
+    monkeypatch.setattr("github_deployer._load_streamlit_secrets", lambda: {})
+
+    assert get_optional_directory_config() is None
 
 
 def test_create_repo_payload():

@@ -139,6 +139,41 @@ def get_directory_config() -> DirectoryConfig:
     )
 
 
+def get_optional_directory_config() -> DirectoryConfig | None:
+    owner = get_config_value("DIRECTORY_REPO_OWNER")
+    repo = get_config_value("DIRECTORY_REPO_NAME")
+    branch = get_config_value("DIRECTORY_REPO_BRANCH", "main") or "main"
+    data_path = get_config_value("DIRECTORY_DATA_PATH", "data/portfolios.json")
+    site_url = get_config_value("DIRECTORY_SITE_URL")
+
+    configured_values = [owner, repo, site_url]
+    if not any(value.strip() for value in configured_values):
+        return None
+
+    if not owner:
+        raise DeploymentError("config", "DIRECTORY_REPO_OWNER is required when directory sync is enabled.")
+    if not repo:
+        raise DeploymentError("config", "DIRECTORY_REPO_NAME is required when directory sync is enabled.")
+    if not site_url:
+        raise DeploymentError("config", "DIRECTORY_SITE_URL is required when directory sync is enabled.")
+
+    clean_data_path = data_path.strip("/")
+    if not clean_data_path:
+        raise DeploymentError("config", "DIRECTORY_DATA_PATH cannot be empty.")
+    if not re.fullmatch(r"[A-Za-z0-9._/\-]+", clean_data_path):
+        raise DeploymentError("config", "DIRECTORY_DATA_PATH contains invalid characters.")
+    if not re.match(r"^https?://", site_url, flags=re.IGNORECASE):
+        raise DeploymentError("config", "DIRECTORY_SITE_URL must start with http:// or https://.")
+
+    return DirectoryConfig(
+        owner=owner,
+        repo=repo,
+        branch=branch,
+        data_path=clean_data_path,
+        site_url=site_url.rstrip("/"),
+    )
+
+
 def sanitize_repo_name(repo_name: str, prefix: str | None = None) -> str:
     if not repo_name or not repo_name.strip():
         raise DeploymentError("validate", "Repository name is required.")
@@ -451,7 +486,7 @@ def deploy_html_portfolio(
     try:
         validate_html_upload(html_content)
         config = get_github_config()
-        directory_config = get_directory_config()
+        directory_config = get_optional_directory_config()
         sanitized_repo = sanitize_repo_name(repo_name, config.repo_prefix)
         sanitized_username = validate_username(username)
         client = GitHubClient(config)
@@ -464,19 +499,21 @@ def deploy_html_portfolio(
         readme = f"# Portfolio Website\n\nThis portfolio was automatically deployed.\n\nLive site:\n{live_url}\n"
         client.upload_content(final_repo_name, "README.md", readme, "Add portfolio README", stage="upload_file")
         client.enable_pages(final_repo_name)
-        directory_entry = PortfolioDirectoryEntry(
-            username=sanitized_username,
-            name=(display_name or sanitized_username).strip(),
-            role=(role or "Portfolio").strip(),
-            template_type=(template_type or "custom").strip(),
-            image=(image or "").strip(),
-        )
-        public_route_url = sync_portfolio_to_directory_repo(
-            client=client,
-            directory_config=directory_config,
-            entry=directory_entry,
-            portfolio_url=live_url,
-        )
+        public_route_url = None
+        if directory_config is not None:
+            directory_entry = PortfolioDirectoryEntry(
+                username=sanitized_username,
+                name=(display_name or sanitized_username).strip(),
+                role=(role or "Portfolio").strip(),
+                template_type=(template_type or "custom").strip(),
+                image=(image or "").strip(),
+            )
+            public_route_url = sync_portfolio_to_directory_repo(
+                client=client,
+                directory_config=directory_config,
+                entry=directory_entry,
+                portfolio_url=live_url,
+            )
 
         collaborator_invited = False
         collaborator_value = collaborator.strip() if collaborator else None
@@ -490,7 +527,12 @@ def deploy_html_portfolio(
             "pages_url": live_url,
             "username": sanitized_username,
             "public_route_url": public_route_url,
-            "directory_repo_url": f"https://github.com/{directory_config.owner}/{directory_config.repo}",
+            "directory_repo_url": (
+                f"https://github.com/{directory_config.owner}/{directory_config.repo}"
+                if directory_config is not None
+                else None
+            ),
+            "directory_sync_enabled": directory_config is not None,
             "collaborator_invited": collaborator_invited,
             "collaborator": collaborator_value,
             "collaborator_permission": collaborator_permission,
