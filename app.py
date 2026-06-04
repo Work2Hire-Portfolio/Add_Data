@@ -143,21 +143,21 @@ with st.sidebar:
     st.code(
         "\n".join(
             [
-                "APP_LOGIN_USER=...",
-                "APP_LOGIN_PASSWORD=...",
-                "GITHUB_TOKEN=...",
-                "GITHUB_USERNAME=...",
-                "GITHUB_REPO_VISIBILITY=public",
-                "GITHUB_PAGES_BRANCH=main",
-                "GITHUB_REPO_PREFIX=portfolio-",
-                "DIRECTORY_REPO_OWNER=...",
-                "DIRECTORY_REPO_NAME=...",
-                "DIRECTORY_REPO_BRANCH=main",
-                "DIRECTORY_DATA_PATH=data/portfolios.json",
-                "DIRECTORY_SITE_URL=https://your-site.vercel.app",
+                'APP_LOGIN_USER = "admin"',
+                'APP_LOGIN_PASSWORD = "change-this-password"',
+                'GITHUB_TOKEN = "ghp_your_token_here"',
+                'GITHUB_USERNAME = "your-github-username"',
+                'GITHUB_REPO_VISIBILITY = "public"',
+                'GITHUB_PAGES_BRANCH = "main"',
+                'GITHUB_REPO_PREFIX = "portfolio-"',
+                'DIRECTORY_REPO_OWNER = "your-github-owner"',
+                'DIRECTORY_REPO_NAME = "your-directory-repo"',
+                'DIRECTORY_REPO_BRANCH = "main"',
+                'DIRECTORY_DATA_PATH = "data/portfolios.json"',
+                'DIRECTORY_SITE_URL = "https://your-site.vercel.app"',
             ]
         ),
-        language="bash",
+        language="toml",
     )
     st.write("Add these in Streamlit App Settings -> Secrets before deploying.")
 
