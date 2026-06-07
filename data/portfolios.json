@@ -4,27 +4,29 @@
     "name": "Ansh Prasad",
     "role": "Frontend Developer",
     "template_type": "modern-professional",
-    "portfolio_url": "https://anshprasad.github.io/portfolio",
+    "portfolio_url": "https://yourportfolio.work/anshprasad",
     "image": "/assets/users/anshprasad.svg",
     "is_active": true,
-    "created_at": "2026-05-28"
+    "created_at": "2026-05-28",
+    "html_content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Ansh Prasad Portfolio</title></head><body><main><h1>Ansh Prasad</h1><p>Frontend Developer</p></main></body></html>"
   },
   {
     "username": "riyasharma",
     "name": "Riya Sharma",
     "role": "UI Engineer",
     "template_type": "creative-showcase",
-    "portfolio_url": "https://riyasharma-portfolio.vercel.app",
+    "portfolio_url": "https://yourportfolio.work/riyasharma",
     "image": "",
     "is_active": true,
-    "created_at": "2026-05-28"
+    "created_at": "2026-05-28",
+    "html_content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Riya Sharma Portfolio</title></head><body><main><h1>Riya Sharma</h1><p>UI Engineer</p></main></body></html>"
   },
   {
     "username": "devansh_resume",
     "name": "Devansh Kumar",
     "role": "Full Stack Developer",
     "template_type": "minimal-resume",
-    "portfolio_url": "https://devansh-portfolio.netlify.app",
+    "portfolio_url": "https://yourportfolio.work/devansh_resume",
     "image": "",
     "is_active": false,
     "created_at": "2026-05-28"

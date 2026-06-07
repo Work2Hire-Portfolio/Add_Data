@@ -3,6 +3,10 @@
   "trailingSlash": false,
   "routes": [
     {
+      "src": "^/data/portfolios\\.json$",
+      "dest": "/api/portfolio"
+    },
+    {
       "handle": "filesystem"
     },
     {

@@ -6,8 +6,9 @@ The app lets you:
 
 - upload a portfolio `.html` file
 - create a GitHub repository automatically
-- enable GitHub Pages on that repository
-- update your public directory repo so `https://your-site/username` works
+- store the uploaded portfolio in that repository
+- enable GitHub Pages for that repository as a background origin
+- update your public directory repo so `https://yourportfolio.work/username` serves the portfolio directly
 - optionally invite a GitHub collaborator
 
 ## Streamlit Deployment Settings
@@ -42,7 +43,7 @@ DIRECTORY_REPO_OWNER = "your-github-owner"
 DIRECTORY_REPO_NAME = "your-directory-repo"
 DIRECTORY_REPO_BRANCH = "main"
 DIRECTORY_DATA_PATH = "data/portfolios.json"
-DIRECTORY_SITE_URL = "https://your-site.vercel.app"
+DIRECTORY_SITE_URL = "https://yourportfolio.work"
 ```
 
 You can also copy the example file:
@@ -70,7 +71,7 @@ If these two values are missing, the app will still open and show a warning that
 - `GITHUB_USERNAME`: the GitHub account that will own the deployed portfolio repos
 - `DIRECTORY_REPO_OWNER`: owner of the public directory repo
 - `DIRECTORY_REPO_NAME`: repo that contains `data/portfolios.json`
-- `DIRECTORY_SITE_URL`: the public site that should open for shared username links
+- `DIRECTORY_SITE_URL`: the public custom-domain site for shared username links, usually `https://yourportfolio.work`
 
 ## Local Run
 
@@ -90,11 +91,13 @@ pip install -r requirements.txt
 
 After deployment, Streamlit gives you a public app URL. Anyone with that Streamlit link can open the deployer UI online.
 
-The actual portfolio websites created by the app will be public if:
+The actual portfolio websites created by the app will be public at `https://yourportfolio.work/<username>` if:
 
-- `GITHUB_REPO_VISIBILITY=public`
-- GitHub Pages is enabled successfully
-- `DIRECTORY_SITE_URL` points to your live public directory site
+- `DIRECTORY_SITE_URL=https://yourportfolio.work`
+- the directory repo sync is configured
+- your Vercel project is connected to `yourportfolio.work`
+
+New deployments still enable GitHub Pages in the background, but visitors and users receive the custom-domain URL. The Vercel route serves the uploaded HTML directly at `https://yourportfolio.work/<username>` instead of visibly redirecting visitors to GitHub Pages.
 
 ## Notes
 

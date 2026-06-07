@@ -39,7 +39,7 @@ async function loadPortfolios() {
   }
 
   try {
-    const response = await fetch("/data/portfolios.json", {
+    const response = await fetch("/api/portfolio", {
       headers: {
         Accept: "application/json",
       },
@@ -49,17 +49,16 @@ async function loadPortfolios() {
       throw new Error(`Portfolio data request failed with status ${response.status}`);
     }
 
-    const portfolios = await response.json();
-    const activePortfolios = Array.isArray(portfolios)
-      ? portfolios.filter(
+    const payload = await response.json();
+    const portfolios = Array.isArray(payload.portfolios) ? payload.portfolios : [];
+    const activePortfolios = portfolios.filter(
           (entry) =>
             entry &&
             entry.is_active === true &&
             typeof entry.username === "string" &&
             typeof entry.portfolio_url === "string" &&
             entry.portfolio_url.trim() !== ""
-        )
-      : [];
+        );
 
     if (activePortfolios.length === 0) {
       portfolioFeedback.textContent = "No portfolios are live yet.";

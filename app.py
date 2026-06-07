@@ -18,7 +18,7 @@ from github_deployer import (
 
 APP_TITLE = "Portfolio Deployment Admin"
 APP_DESCRIPTION = (
-    "Upload a portfolio HTML file, publish it to GitHub Pages, and sync the public username route."
+    "Upload a portfolio HTML file, store it in GitHub, and publish the custom public username route."
 )
 
 
@@ -100,18 +100,18 @@ def _render_deploy_result(payload: dict) -> None:
 
     st.success("Portfolio deployed successfully.")
     st.write(f"Repository: {payload.get('repo_url', 'Not available')}")
-    st.write(f"GitHub Pages URL: {payload.get('pages_url', 'Not available')}")
     if payload.get("public_route_url"):
-        st.write(f"Public username URL: {payload['public_route_url']}")
+        st.write(f"Live portfolio URL: {payload['public_route_url']}")
     elif not payload.get("directory_sync_enabled"):
-        st.info("Directory sync is not configured, so only the GitHub repo and GitHub Pages link were created.")
+        st.info("Directory sync is not configured, so only the GitHub repository was created.")
 
     collaborator = payload.get("collaborator")
     if payload.get("collaborator_invited") and collaborator:
         st.write(f"Collaborator invite sent to `{collaborator}`.")
 
+    visible_payload = {key: value for key, value in payload.items() if key != "pages_url"}
     with st.expander("Full response"):
-        st.json(payload)
+        st.json(visible_payload)
 
 
 def _load_recent_history(limit: int = 20) -> list[dict]:
@@ -156,7 +156,7 @@ with st.sidebar:
                 'DIRECTORY_REPO_NAME = "your-directory-repo"',
                 'DIRECTORY_REPO_BRANCH = "main"',
                 'DIRECTORY_DATA_PATH = "data/portfolios.json"',
-                'DIRECTORY_SITE_URL = "https://your-site.vercel.app"',
+                'DIRECTORY_SITE_URL = "https://yourportfolio.work"',
             ]
         ),
         language="toml",
@@ -191,7 +191,7 @@ with st.form("deploy_form"):
     collaborator_permission = "push"
 
     with st.expander("Optional details for directory listing and sharing"):
-        st.caption("You can leave all of these blank if you only want the GitHub repo link and GitHub Pages portfolio link.")
+        st.caption("You can leave these blank if you only need the public route and GitHub repository.")
         display_name = st.text_input("Display name", placeholder="Ansh Prasad")
         role = st.text_input("Role", placeholder="Frontend Developer")
         template_type = st.text_input("Template type", placeholder="custom")

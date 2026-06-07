@@ -7,3 +7,4 @@ __pycache__/
 *.sqlite3
 uvicorn_stdout.log
 uvicorn_stderr.log
+.vscode/

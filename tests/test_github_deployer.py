@@ -13,6 +13,7 @@ from github_deployer import (
     GitHubClient,
     GitHubConfig,
     PortfolioDirectoryEntry,
+    deploy_html_portfolio,
     get_optional_directory_config,
     get_config_value,
     directory_route_url_for,
@@ -96,9 +97,9 @@ def test_get_config_value_prefers_environment_over_streamlit_secrets(monkeypatch
 
 def test_get_config_value_uses_streamlit_secrets_when_environment_missing(monkeypatch):
     monkeypatch.delenv("DIRECTORY_SITE_URL", raising=False)
-    monkeypatch.setattr("github_deployer._load_streamlit_secrets", lambda: {"DIRECTORY_SITE_URL": "https://demo.vercel.app"})
+    monkeypatch.setattr("github_deployer._load_streamlit_secrets", lambda: {"DIRECTORY_SITE_URL": "https://yourportfolio.work"})
 
-    assert get_config_value("DIRECTORY_SITE_URL") == "https://demo.vercel.app"
+    assert get_config_value("DIRECTORY_SITE_URL") == "https://yourportfolio.work"
 
 
 def test_get_optional_directory_config_returns_none_when_directory_sync_is_not_configured(monkeypatch):
@@ -172,7 +173,7 @@ def test_pages_url_generation():
 
 
 def test_directory_route_url_generation():
-    assert directory_route_url_for("https://portfolio.example.com/", "anshprasad") == "https://portfolio.example.com/anshprasad"
+    assert directory_route_url_for("https://yourportfolio.work/", "anshprasad") == "https://yourportfolio.work/anshprasad"
 
 
 def test_enable_pages_payload():
@@ -221,7 +222,12 @@ def test_upsert_portfolio_record_updates_existing_user_and_preserves_created_at(
         }
     ]
 
-    updated = upsert_portfolio_record(portfolios, entry, "https://octocat.github.io/portfolio-ansh/")
+    updated = upsert_portfolio_record(
+        portfolios,
+        entry,
+        "https://yourportfolio.work/anshprasad",
+        "<!doctype html><html><body>New</body></html>",
+    )
 
     assert updated == [
         {
@@ -229,10 +235,11 @@ def test_upsert_portfolio_record_updates_existing_user_and_preserves_created_at(
             "name": "Ansh Prasad",
             "role": "Frontend Developer",
             "template_type": "modern-professional",
-            "portfolio_url": "https://octocat.github.io/portfolio-ansh/",
+            "portfolio_url": "https://yourportfolio.work/anshprasad",
             "image": "/assets/users/anshprasad.png",
             "is_active": True,
             "created_at": "2026-01-01",
+            "html_content": "<!doctype html><html><body>New</body></html>",
         }
     ]
 
@@ -257,7 +264,7 @@ def test_sync_portfolio_to_directory_repo_updates_remote_json():
         repo="portfolio-directory",
         branch="main",
         data_path="data/portfolios.json",
-        site_url="https://portfolio.example.com",
+        site_url="https://yourportfolio.work",
     )
     entry = PortfolioDirectoryEntry(
         username="anshprasad",
@@ -272,9 +279,10 @@ def test_sync_portfolio_to_directory_repo_updates_remote_json():
         directory_config=directory,
         entry=entry,
         portfolio_url="https://octocat.github.io/portfolio-ansh/",
+        html_content="<!doctype html><html><body>Ansh</body></html>",
     )
 
-    assert public_url == "https://portfolio.example.com/anshprasad"
+    assert public_url == "https://yourportfolio.work/anshprasad"
     put_call = session.calls[2]
     assert put_call["method"] == "PUT"
     assert put_call["url"] == "https://api.github.com/repos/orgname/portfolio-directory/contents/data/portfolios.json"
@@ -282,9 +290,65 @@ def test_sync_portfolio_to_directory_repo_updates_remote_json():
     decoded = base64.b64decode(payload["content"]).decode("utf-8")
     parsed = json.loads(decoded)
     assert [item["username"] for item in parsed] == ["anshprasad", "riya"]
-    assert parsed[0]["portfolio_url"] == "https://octocat.github.io/portfolio-ansh/"
+    assert parsed[0]["portfolio_url"] == "https://yourportfolio.work/anshprasad"
+    assert parsed[0]["html_content"] == "<!doctype html><html><body>Ansh</body></html>"
     assert payload["branch"] == "main"
     assert payload["sha"] == "abc123"
+
+
+def test_deploy_html_generates_pages_but_returns_custom_public_url(monkeypatch):
+    class FakeDeployClient:
+        calls = []
+
+        def __init__(self, config):
+            self.config = config
+
+        def create_repo(self, requested_name):
+            self.calls.append(("create_repo", requested_name))
+            return requested_name
+
+        def upload_content(self, repo_name, path, content, commit_message, stage="upload_file"):
+            self.calls.append(("upload_content", repo_name, path, content, commit_message, stage))
+
+        def enable_pages(self, repo_name):
+            self.calls.append(("enable_pages", repo_name))
+
+        def read_text_content_from_repo(self, owner, repo_name, path, branch, stage):
+            self.calls.append(("read_text_content_from_repo", owner, repo_name, path, branch, stage))
+            return "[]"
+
+        def upload_content_to_repo(self, owner, repo_name, path, content, commit_message, branch, stage):
+            self.calls.append(("upload_content_to_repo", owner, repo_name, path, content, commit_message, branch, stage))
+
+    monkeypatch.setattr("github_deployer.GitHubClient", FakeDeployClient)
+    monkeypatch.setattr("github_deployer.get_github_config", config)
+    monkeypatch.setattr(
+        "github_deployer.get_optional_directory_config",
+        lambda: DirectoryConfig(
+            owner="orgname",
+            repo="portfolio-directory",
+            branch="main",
+            data_path="data/portfolios.json",
+            site_url="https://yourportfolio.work",
+        ),
+    )
+    monkeypatch.setattr("github_deployer.save_deployment_history", lambda result: None)
+
+    result = deploy_html_portfolio(
+        html_content="<!doctype html><html><body>Ansh</body></html>",
+        repo_name="Ansh Portfolio",
+        username="AnshPrasad",
+    )
+
+    assert result["success"] is True
+    assert result["pages_url"] == "https://octocat.github.io/ansh-portfolio/"
+    assert result["public_route_url"] == "https://yourportfolio.work/anshprasad"
+    assert ("enable_pages", "ansh-portfolio") in FakeDeployClient.calls
+
+    directory_upload = next(call for call in FakeDeployClient.calls if call[0] == "upload_content_to_repo")
+    directory_records = json.loads(directory_upload[4])
+    assert directory_records[0]["portfolio_url"] == "https://yourportfolio.work/anshprasad"
+    assert directory_records[0]["html_content"] == "<!doctype html><html><body>Ansh</body></html>"
 
 
 def test_collaborator_invite_payload():

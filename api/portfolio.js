@@ -1,17 +1,30 @@
 const fs = require("fs/promises");
 const path = require("path");
 
-const DATA_FILE = path.join(process.cwd(), "data", "portfolios.json");
+const DEFAULT_DATA_FILE = path.join(process.cwd(), "data", "portfolios.json");
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
 
+function getDataFile() {
+  return process.env.PORTFOLIO_DATA_FILE || DEFAULT_DATA_FILE;
+}
+
 async function readPortfolios() {
-  const raw = await fs.readFile(DATA_FILE, "utf8");
+  const raw = await fs.readFile(getDataFile(), "utf8");
   const parsed = JSON.parse(raw);
   return Array.isArray(parsed) ? parsed : [];
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function renderNotFound(username) {
-  const safeUsername = username ? String(username).replace(/[<>"']/g, "") : "unknown";
+  const safeUsername = username ? escapeHtml(username) : "unknown";
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -34,14 +47,90 @@ function renderNotFound(username) {
 </html>`;
 }
 
-module.exports = async (req, res) => {
+function publicPortfolioUrl(req, username) {
+  const host = req.headers && (req.headers["x-forwarded-host"] || req.headers.host);
+  if (!host) {
+    return `/${encodeURIComponent(username)}`;
+  }
+  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0].trim() || "https";
+  return `${proto}://${host}/${encodeURIComponent(username)}`;
+}
+
+function toPublicDirectoryEntry(entry, req) {
+  const { html_content: _htmlContent, ...publicEntry } = entry;
+  if (typeof entry.username === "string" && entry.username.trim() !== "") {
+    publicEntry.portfolio_url = publicPortfolioUrl(req, entry.username);
+  }
+  return publicEntry;
+}
+
+function findActivePortfolio(portfolios, username) {
+  return portfolios.find(
+    (entry) =>
+      entry &&
+      entry.username === username &&
+      entry.is_active === true &&
+      ((typeof entry.html_content === "string" && entry.html_content.trim() !== "") ||
+        (typeof entry.portfolio_url === "string" && entry.portfolio_url.trim() !== ""))
+  );
+}
+
+function validateOriginUrl(portfolioUrl) {
+  const parsed = new URL(portfolioUrl);
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Unsupported portfolio origin.");
+  }
+  return parsed.toString();
+}
+
+function injectBaseHref(html, portfolioUrl) {
+  const baseHref = escapeHtml(portfolioUrl);
+  const baseTag = `<base href="${baseHref}" />`;
+
+  if (/<base\s/i.test(html)) {
+    return html;
+  }
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1>\n    ${baseTag}`);
+  }
+  return `${baseTag}\n${html}`;
+}
+
+async function fetchPortfolioHtml(portfolioUrl) {
+  const originUrl = validateOriginUrl(portfolioUrl);
+  const response = await fetch(originUrl, {
+    redirect: "follow",
+    headers: {
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent": "yourportfolio-work-renderer",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Portfolio origin returned ${response.status}.`);
+  }
+
+  return injectBaseHref(await response.text(), originUrl);
+}
+
+function sendHtml(res, html, cacheControl = "public, max-age=60, s-maxage=300") {
+  res.status(200);
+  res.setHeader("Cache-Control", cacheControl);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(html);
+}
+
+async function portfolioHandler(req, res) {
   try {
     const username = typeof req.query.username === "string" ? req.query.username.trim() : "";
 
     if (!username) {
       const portfolios = await readPortfolios();
+      const publicPortfolios = portfolios.map((entry) =>
+        entry && typeof entry === "object" ? toPublicDirectoryEntry(entry, req) : entry
+      );
       res.status(200).json({
-        portfolios,
+        portfolios: publicPortfolios,
         active_count: portfolios.filter((entry) => entry && entry.is_active === true).length,
       });
       return;
@@ -53,25 +142,33 @@ module.exports = async (req, res) => {
     }
 
     const portfolios = await readPortfolios();
-    const match = portfolios.find(
-      (entry) =>
-        entry &&
-        entry.username === username &&
-        entry.is_active === true &&
-        typeof entry.portfolio_url === "string" &&
-        entry.portfolio_url.trim() !== ""
-    );
+    const match = findActivePortfolio(portfolios, username);
 
     if (!match) {
       res.status(404).setHeader("Content-Type", "text/html; charset=utf-8").send(renderNotFound(username));
       return;
     }
 
-    res.setHeader("Cache-Control", "no-store");
-    res.redirect(302, match.portfolio_url);
+    if (typeof match.html_content === "string" && match.html_content.trim() !== "") {
+      sendHtml(res, match.html_content);
+      return;
+    }
+
+    const html = await fetchPortfolioHtml(match.portfolio_url);
+    sendHtml(res, html, "public, max-age=60, s-maxage=120");
   } catch (error) {
     res.status(500).json({
       error: "Unable to read portfolio directory.",
     });
   }
 };
+
+portfolioHandler.default = portfolioHandler;
+portfolioHandler.handler = portfolioHandler;
+portfolioHandler.readPortfolios = readPortfolios;
+portfolioHandler.findActivePortfolio = findActivePortfolio;
+portfolioHandler.fetchPortfolioHtml = fetchPortfolioHtml;
+
+module.exports = portfolioHandler;
+module.exports.default = portfolioHandler;
+module.exports.handler = portfolioHandler;

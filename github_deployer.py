@@ -496,8 +496,6 @@ def deploy_html_portfolio(
         repo_url = f"https://github.com/{config.username}/{final_repo_name}"
 
         client.upload_content(final_repo_name, "index.html", html_content, "Deploy portfolio index.html")
-        readme = f"# Portfolio Website\n\nThis portfolio was automatically deployed.\n\nLive site:\n{live_url}\n"
-        client.upload_content(final_repo_name, "README.md", readme, "Add portfolio README", stage="upload_file")
         client.enable_pages(final_repo_name)
         public_route_url = None
         if directory_config is not None:
@@ -513,7 +511,17 @@ def deploy_html_portfolio(
                 directory_config=directory_config,
                 entry=directory_entry,
                 portfolio_url=live_url,
+                html_content=html_content,
             )
+
+        live_site_text = public_route_url or "No public route was configured. Set DIRECTORY_SITE_URL to publish at your custom domain."
+        readme = (
+            "# Portfolio Website\n\n"
+            "This portfolio was automatically deployed.\n\n"
+            f"Public site:\n{live_site_text}\n\n"
+            f"GitHub Pages origin:\n{live_url}\n"
+        )
+        client.upload_content(final_repo_name, "README.md", readme, "Add portfolio README", stage="upload_file")
 
         collaborator_invited = False
         collaborator_value = collaborator.strip() if collaborator else None
@@ -630,6 +638,7 @@ def upsert_portfolio_record(
     portfolios: list[dict[str, Any]],
     entry: PortfolioDirectoryEntry,
     portfolio_url: str,
+    html_content: str | None = None,
 ) -> list[dict[str, Any]]:
     next_portfolios = list(portfolios)
     created_at = datetime.now(timezone.utc).date().isoformat()
@@ -640,7 +649,7 @@ def upsert_portfolio_record(
         if current_username != entry.username:
             continue
 
-        next_portfolios[index] = {
+        updated_record = {
             **current,
             "username": entry.username,
             "name": entry.name,
@@ -651,22 +660,26 @@ def upsert_portfolio_record(
             "is_active": True,
             "created_at": current.get("created_at") or created_at,
         }
+        if html_content is not None:
+            updated_record["html_content"] = html_content
+        next_portfolios[index] = updated_record
         updated = True
         break
 
     if not updated:
-        next_portfolios.append(
-            {
-                "username": entry.username,
-                "name": entry.name,
-                "role": entry.role,
-                "template_type": entry.template_type,
-                "portfolio_url": portfolio_url,
-                "image": entry.image,
-                "is_active": True,
-                "created_at": created_at,
-            }
-        )
+        new_record = {
+            "username": entry.username,
+            "name": entry.name,
+            "role": entry.role,
+            "template_type": entry.template_type,
+            "portfolio_url": portfolio_url,
+            "image": entry.image,
+            "is_active": True,
+            "created_at": created_at,
+        }
+        if html_content is not None:
+            new_record["html_content"] = html_content
+        next_portfolios.append(new_record)
 
     next_portfolios.sort(key=lambda item: str(item.get("username", "")))
     return next_portfolios
@@ -677,6 +690,7 @@ def sync_portfolio_to_directory_repo(
     directory_config: DirectoryConfig,
     entry: PortfolioDirectoryEntry,
     portfolio_url: str,
+    html_content: str | None = None,
 ) -> str:
     stage = "sync_directory"
     raw = client.read_text_content_from_repo(
@@ -698,7 +712,8 @@ def sync_portfolio_to_directory_repo(
             raise DeploymentError(stage, f"{directory_config.data_path} must contain a JSON array.")
         portfolios = parsed
 
-    next_portfolios = upsert_portfolio_record(portfolios, entry, portfolio_url)
+    public_url = directory_route_url_for(directory_config.site_url, entry.username)
+    next_portfolios = upsert_portfolio_record(portfolios, entry, public_url, html_content)
     client.upload_content_to_repo(
         owner=directory_config.owner,
         repo_name=directory_config.repo,
@@ -708,4 +723,4 @@ def sync_portfolio_to_directory_repo(
         branch=directory_config.branch,
         stage=stage,
     )
-    return directory_route_url_for(directory_config.site_url, entry.username)
+    return public_url

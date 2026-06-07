@@ -37,8 +37,7 @@ function showResult(payload) {
   result.innerHTML = `
     <h2>${payload.status === "pages_enabled" ? "GitHub Pages enabled." : "Portfolio deployed successfully."}</h2>
     ${row("Repository", payload.repo_url, true, true)}
-    ${row("Live Portfolio", payload.pages_url, true, true)}
-    ${payload.public_route_url ? row("Public Username URL", payload.public_route_url, true, true) : ""}
+    ${payload.public_route_url ? row("Live Portfolio", payload.public_route_url, true, true) : ""}
     ${row("Collaborator", collaboratorText)}
   `;
 }
