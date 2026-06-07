@@ -122,6 +122,102 @@ def test_portfolio_api_serves_html_directly_without_redirect(tmp_path):
     subprocess.run([node, "-e", script], check=True)
 
 
+def test_portfolio_api_fetches_origin_before_cached_html(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        return
+
+    data_file = tmp_path / "portfolios.json"
+    data_file.write_text(
+        json.dumps(
+            [
+                {
+                    "username": "anshprasad",
+                    "name": "Ansh Prasad",
+                    "role": "Frontend Developer",
+                    "template_type": "modern-professional",
+                    "portfolio_url": "https://octocat.github.io/portfolio-ansh/",
+                    "html_content": "<!doctype html><html><body><h1>Old cached portfolio</h1></body></html>",
+                    "is_active": True,
+                    "created_at": "2026-05-28",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    script = textwrap.dedent(
+        f"""
+        const assert = require("assert");
+        process.env.PORTFOLIO_DATA_FILE = {json.dumps(str(data_file))};
+        global.fetch = async (url) => {{
+          assert.equal(url, "https://octocat.github.io/portfolio-ansh/");
+          return {{
+            ok: true,
+            text: async () => "<!doctype html><html><head></head><body><h1>Updated from repo</h1></body></html>",
+          }};
+        }};
+        const fs = require("fs");
+        const vm = require("vm");
+        const moduleForApi = {{ exports: {{}} }};
+        vm.runInNewContext(fs.readFileSync({json.dumps(PORTFOLIO_API_REQUIRE)}, "utf8"), {{
+          require,
+          module: moduleForApi,
+          exports: moduleForApi.exports,
+          process,
+          console,
+          URL,
+          fetch: global.fetch,
+        }}, {{ filename: {json.dumps(PORTFOLIO_API_REQUIRE)} }});
+        const mod = moduleForApi.exports;
+        const handler = mod.default || mod.handler || mod;
+
+        class FakeResponse {{
+          constructor() {{
+            this.statusCode = 200;
+            this.headers = {{}};
+            this.body = "";
+          }}
+          status(code) {{
+            this.statusCode = code;
+            return this;
+          }}
+          setHeader(name, value) {{
+            this.headers[name.toLowerCase()] = value;
+            return this;
+          }}
+          send(body) {{
+            this.body = body;
+            return this;
+          }}
+          json(payload) {{
+            this.payload = payload;
+            return this;
+          }}
+        }}
+
+        async function run() {{
+          const res = new FakeResponse();
+          await handler({{
+            query: {{ username: "anshprasad" }},
+            headers: {{ host: "yourportfolio.work", "x-forwarded-proto": "https" }},
+          }}, res);
+          assert.equal(res.statusCode, 200);
+          assert.match(res.body, /Updated from repo/);
+          assert.doesNotMatch(res.body, /Old cached portfolio/);
+          assert.match(res.body, /<base href="https:\\/\\/octocat.github.io\\/portfolio-ansh\\/" \\/>/);
+        }}
+
+        run().catch((error) => {{
+          console.error(error);
+          process.exit(1);
+        }});
+        """
+    )
+
+    subprocess.run([node, "-e", script], check=True)
+
+
 def test_portfolio_api_directory_listing_redacts_html(tmp_path):
     node = shutil.which("node")
     if node is None:

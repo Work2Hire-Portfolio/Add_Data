@@ -290,7 +290,7 @@ def test_sync_portfolio_to_directory_repo_updates_remote_json():
     decoded = base64.b64decode(payload["content"]).decode("utf-8")
     parsed = json.loads(decoded)
     assert [item["username"] for item in parsed] == ["anshprasad", "riya"]
-    assert parsed[0]["portfolio_url"] == "https://yourportfolio.work/anshprasad"
+    assert parsed[0]["portfolio_url"] == "https://octocat.github.io/portfolio-ansh/"
     assert parsed[0]["html_content"] == "<!doctype html><html><body>Ansh</body></html>"
     assert payload["branch"] == "main"
     assert payload["sha"] == "abc123"
@@ -347,8 +347,8 @@ def test_deploy_html_generates_pages_but_returns_custom_public_url(monkeypatch):
 
     directory_upload = next(call for call in FakeDeployClient.calls if call[0] == "upload_content_to_repo")
     directory_records = json.loads(directory_upload[4])
-    assert directory_records[0]["portfolio_url"] == "https://yourportfolio.work/anshprasad"
-    assert directory_records[0]["html_content"] == "<!doctype html><html><body>Ansh</body></html>"
+    assert directory_records[0]["portfolio_url"] == "https://octocat.github.io/ansh-portfolio/"
+    assert "html_content" not in directory_records[0]
 
 
 def test_collaborator_invite_payload():

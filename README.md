@@ -8,7 +8,7 @@ The app lets you:
 - create a GitHub repository automatically
 - store the uploaded portfolio in that repository
 - enable GitHub Pages for that repository as a background origin
-- update your public directory repo so `https://yourportfolio.work/username` serves the portfolio directly
+- update your public directory repo so `https://yourportfolio.work/username` serves the portfolio through your custom domain
 - optionally invite a GitHub collaborator
 
 ## Streamlit Deployment Settings
@@ -97,7 +97,7 @@ The actual portfolio websites created by the app will be public at `https://your
 - the directory repo sync is configured
 - your Vercel project is connected to `yourportfolio.work`
 
-New deployments still enable GitHub Pages in the background, but visitors and users receive the custom-domain URL. The Vercel route serves the uploaded HTML directly at `https://yourportfolio.work/<username>` instead of visibly redirecting visitors to GitHub Pages.
+New deployments enable GitHub Pages in the background, but visitors and users receive the custom-domain URL. The Vercel route fetches the GitHub Pages origin server-side and returns it at `https://yourportfolio.work/<username>` instead of visibly redirecting visitors to GitHub Pages. If someone edits the portfolio repo later, the custom-domain page can reflect those changes after GitHub Pages rebuilds and the short Vercel cache expires.
 
 ## Notes
 

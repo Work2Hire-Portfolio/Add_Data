@@ -511,7 +511,6 @@ def deploy_html_portfolio(
                 directory_config=directory_config,
                 entry=directory_entry,
                 portfolio_url=live_url,
-                html_content=html_content,
             )
 
         live_site_text = public_route_url or "No public route was configured. Set DIRECTORY_SITE_URL to publish at your custom domain."
@@ -713,7 +712,7 @@ def sync_portfolio_to_directory_repo(
         portfolios = parsed
 
     public_url = directory_route_url_for(directory_config.site_url, entry.username)
-    next_portfolios = upsert_portfolio_record(portfolios, entry, public_url, html_content)
+    next_portfolios = upsert_portfolio_record(portfolios, entry, portfolio_url, html_content)
     client.upload_content_to_repo(
         owner=directory_config.owner,
         repo_name=directory_config.repo,

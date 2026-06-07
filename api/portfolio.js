@@ -75,6 +75,34 @@ function findActivePortfolio(portfolios, username) {
   );
 }
 
+function requestHost(req) {
+  const host = req.headers && (req.headers["x-forwarded-host"] || req.headers.host);
+  return host ? String(host).split(",")[0].trim().toLowerCase() : "";
+}
+
+function portfolioOriginUrl(entry, req) {
+  const rawUrl =
+    typeof entry.portfolio_url === "string" && entry.portfolio_url.trim() !== ""
+      ? entry.portfolio_url.trim()
+      : "";
+  if (!rawUrl) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return "";
+    }
+    if (requestHost(req) && parsed.host.toLowerCase() === requestHost(req)) {
+      return "";
+    }
+    return parsed.toString();
+  } catch (error) {
+    return "";
+  }
+}
+
 function validateOriginUrl(portfolioUrl) {
   const parsed = new URL(portfolioUrl);
   if (!["http:", "https:"].includes(parsed.protocol)) {
@@ -149,13 +177,25 @@ async function portfolioHandler(req, res) {
       return;
     }
 
+    const originUrl = portfolioOriginUrl(match, req);
+    if (originUrl) {
+      try {
+        const html = await fetchPortfolioHtml(originUrl);
+        sendHtml(res, html, "public, max-age=30, s-maxage=60");
+        return;
+      } catch (error) {
+        if (!(typeof match.html_content === "string" && match.html_content.trim() !== "")) {
+          throw error;
+        }
+      }
+    }
+
     if (typeof match.html_content === "string" && match.html_content.trim() !== "") {
       sendHtml(res, match.html_content);
       return;
     }
 
-    const html = await fetchPortfolioHtml(match.portfolio_url);
-    sendHtml(res, html, "public, max-age=60, s-maxage=120");
+    res.status(404).setHeader("Content-Type", "text/html; charset=utf-8").send(renderNotFound(username));
   } catch (error) {
     res.status(500).json({
       error: "Unable to read portfolio directory.",
@@ -167,6 +207,7 @@ portfolioHandler.default = portfolioHandler;
 portfolioHandler.handler = portfolioHandler;
 portfolioHandler.readPortfolios = readPortfolios;
 portfolioHandler.findActivePortfolio = findActivePortfolio;
+portfolioHandler.portfolioOriginUrl = portfolioOriginUrl;
 portfolioHandler.fetchPortfolioHtml = fetchPortfolioHtml;
 
 module.exports = portfolioHandler;
