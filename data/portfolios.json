@@ -21,6 +21,26 @@
     "created_at": "2026-06-07"
   },
   {
+    "username": "devansh_resume",
+    "name": "Devansh Kumar",
+    "role": "Full Stack Developer",
+    "template_type": "minimal-resume",
+    "portfolio_url": "https://yourportfolio.work/devansh_resume",
+    "image": "",
+    "is_active": false,
+    "created_at": "2026-05-28"
+  },
+  {
+    "username": "kunalparmani",
+    "name": "kunalparmani",
+    "role": "Portfolio",
+    "template_type": "custom",
+    "portfolio_url": "https://Work2Hire-Portfolio.github.io/portfolio-kunalparmani/",
+    "image": "",
+    "is_active": true,
+    "created_at": "2026-06-09"
+  },
+  {
     "username": "riyasharma",
     "name": "Riya Sharma",
     "role": "UI Engineer",
@@ -30,15 +50,5 @@
     "is_active": true,
     "created_at": "2026-05-28",
     "html_content": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Riya Sharma Portfolio</title></head><body><main><h1>Riya Sharma</h1><p>UI Engineer</p></main></body></html>"
-  },
-  {
-    "username": "devansh_resume",
-    "name": "Devansh Kumar",
-    "role": "Full Stack Developer",
-    "template_type": "minimal-resume",
-    "portfolio_url": "https://yourportfolio.work/devansh_resume",
-    "image": "",
-    "is_active": false,
-    "created_at": "2026-05-28"
   }
 ]
