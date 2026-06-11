@@ -60,5 +60,15 @@
     "image": "",
     "is_active": true,
     "created_at": "2026-06-11"
+  },
+  {
+    "username": "testuser3",
+    "name": "testuser3",
+    "role": "Portfolio",
+    "template_type": "custom",
+    "portfolio_url": "https://Work2Hire-Portfolio.github.io/portfolio-test-user-3/",
+    "image": "",
+    "is_active": true,
+    "created_at": "2026-06-11"
   }
 ]
