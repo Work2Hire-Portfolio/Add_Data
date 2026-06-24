@@ -18,6 +18,9 @@ GITHUB_API_BASE = "https://api.github.com"
 ALLOWED_PERMISSIONS = {"pull", "triage", "push", "maintain", "admin"}
 HISTORY_DB_PATH = Path(os.getenv("DEPLOYMENT_HISTORY_DB", "deployment_history.sqlite3"))
 USERNAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")
+MAX_ASSET_SIZE_BYTES = 15 * 1024 * 1024
+RESUME_EXTENSIONS = {".pdf", ".doc", ".docx"}
+PROFILE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"}
 load_dotenv()
 
 
@@ -57,6 +60,12 @@ class PortfolioDirectoryEntry:
     role: str
     template_type: str
     image: str = ""
+
+
+@dataclass(frozen=True)
+class PortfolioAssetUpload:
+    filename: str
+    content: bytes
 
 
 def _load_streamlit_secrets() -> dict[str, Any]:
@@ -231,6 +240,36 @@ def validate_public_url(url: str, field_name: str) -> str:
     if not re.match(r"^https?://", clean, flags=re.IGNORECASE):
         raise DeploymentError("config", f"{field_name} must start with http:// or https://.")
     return clean.rstrip("/")
+
+
+def sanitize_asset_filename(filename: str, allowed_extensions: set[str], field_name: str) -> str:
+    original_name = Path(filename or "").name.strip()
+    if not original_name:
+        raise DeploymentError("validate", f"{field_name} filename is required.")
+
+    suffix = Path(original_name).suffix.lower()
+    if suffix not in allowed_extensions:
+        allowed = ", ".join(sorted(allowed_extensions))
+        raise DeploymentError("validate", f"{field_name} must use one of these file types: {allowed}.")
+
+    stem = Path(original_name).stem.strip().lower()
+    stem = re.sub(r"\s+", "-", stem)
+    stem = re.sub(r"[^a-z0-9._-]", "", stem)
+    stem = re.sub(r"-{2,}", "-", stem).strip("-._")
+    if not stem:
+        stem = field_name.lower().replace(" ", "-")
+
+    return f"{stem}{suffix}"
+
+
+def validate_asset_upload(upload: PortfolioAssetUpload, allowed_extensions: set[str], field_name: str) -> str:
+    safe_filename = sanitize_asset_filename(upload.filename, allowed_extensions, field_name)
+    if not upload.content:
+        raise DeploymentError("validate", f"{field_name} file is empty.")
+    if len(upload.content) > MAX_ASSET_SIZE_BYTES:
+        max_mb = MAX_ASSET_SIZE_BYTES // (1024 * 1024)
+        raise DeploymentError("validate", f"{field_name} must be {max_mb} MB or smaller.")
+    return safe_filename
 
 
 def pages_url_for(username: str, repo_name: str) -> str:
@@ -410,10 +449,41 @@ class GitHubClient:
         branch: str,
         stage: str,
     ) -> None:
+        self.upload_bytes_to_repo(
+            owner=owner,
+            repo_name=repo_name,
+            path=path,
+            content=content.encode("utf-8"),
+            commit_message=commit_message,
+            branch=branch,
+            stage=stage,
+        )
+
+    def upload_binary_content(self, repo_name: str, path: str, content: bytes, commit_message: str, stage: str = "upload_file") -> None:
+        self.upload_bytes_to_repo(
+            owner=self.config.username,
+            repo_name=repo_name,
+            path=path,
+            content=content,
+            commit_message=commit_message,
+            branch=self.config.pages_branch,
+            stage=stage,
+        )
+
+    def upload_bytes_to_repo(
+        self,
+        owner: str,
+        repo_name: str,
+        path: str,
+        content: bytes,
+        commit_message: str,
+        branch: str,
+        stage: str,
+    ) -> None:
         sha = self._get_content_sha_for_repo(owner, repo_name, path, stage)
         payload: dict[str, Any] = {
             "message": commit_message,
-            "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+            "content": base64.b64encode(content).decode("ascii"),
             "branch": branch,
         }
         if sha:
@@ -480,6 +550,8 @@ def deploy_html_portfolio(
     role: str | None = None,
     template_type: str | None = None,
     image: str | None = None,
+    resume_upload: PortfolioAssetUpload | None = None,
+    profile_picture_upload: PortfolioAssetUpload | None = None,
     collaborator: str | None = None,
     collaborator_permission: str = "push",
 ) -> dict[str, Any]:
@@ -489,6 +561,21 @@ def deploy_html_portfolio(
         directory_config = get_optional_directory_config()
         sanitized_repo = sanitize_repo_name(repo_name, config.repo_prefix)
         sanitized_username = validate_username(username)
+        profile_asset: tuple[str, PortfolioAssetUpload] | None = None
+        resume_asset: tuple[str, PortfolioAssetUpload] | None = None
+
+        if profile_picture_upload is not None:
+            profile_filename = validate_asset_upload(
+                profile_picture_upload,
+                PROFILE_IMAGE_EXTENSIONS,
+                "Profile picture",
+            )
+            profile_asset = (f"assets/{profile_filename}", profile_picture_upload)
+
+        if resume_upload is not None:
+            resume_filename = validate_asset_upload(resume_upload, RESUME_EXTENSIONS, "Resume")
+            resume_asset = (f"assets/{resume_filename}", resume_upload)
+
         client = GitHubClient(config)
 
         final_repo_name = client.create_repo(sanitized_repo)
@@ -496,6 +583,33 @@ def deploy_html_portfolio(
         repo_url = f"https://github.com/{config.username}/{final_repo_name}"
 
         client.upload_content(final_repo_name, "index.html", html_content, "Deploy portfolio index.html")
+
+        uploaded_asset_urls: dict[str, str] = {}
+        directory_image = (image or "").strip()
+        if profile_asset is not None:
+            profile_path, profile_upload = profile_asset
+            client.upload_binary_content(
+                final_repo_name,
+                profile_path,
+                profile_upload.content,
+                "Upload profile picture",
+                stage="upload_profile_picture",
+            )
+            uploaded_asset_urls["profile_picture_url"] = f"{live_url}{profile_path}"
+            if not directory_image:
+                directory_image = uploaded_asset_urls["profile_picture_url"]
+
+        if resume_asset is not None:
+            resume_path, resume = resume_asset
+            client.upload_binary_content(
+                final_repo_name,
+                resume_path,
+                resume.content,
+                "Upload resume",
+                stage="upload_resume",
+            )
+            uploaded_asset_urls["resume_url"] = f"{live_url}{resume_path}"
+
         client.enable_pages(final_repo_name)
         public_route_url = None
         if directory_config is not None:
@@ -504,7 +618,7 @@ def deploy_html_portfolio(
                 name=(display_name or sanitized_username).strip(),
                 role=(role or "Portfolio").strip(),
                 template_type=(template_type or "custom").strip(),
-                image=(image or "").strip(),
+                image=directory_image,
             )
             public_route_url = sync_portfolio_to_directory_repo(
                 client=client,
@@ -543,6 +657,7 @@ def deploy_html_portfolio(
             "collaborator_invited": collaborator_invited,
             "collaborator": collaborator_value,
             "collaborator_permission": collaborator_permission,
+            **uploaded_asset_urls,
             "status": "deployed",
         }
         save_deployment_history(result)

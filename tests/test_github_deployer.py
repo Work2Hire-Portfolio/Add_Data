@@ -12,15 +12,18 @@ from github_deployer import (
     DeploymentError,
     GitHubClient,
     GitHubConfig,
+    PortfolioAssetUpload,
     PortfolioDirectoryEntry,
     deploy_html_portfolio,
     get_optional_directory_config,
     get_config_value,
     directory_route_url_for,
     pages_url_for,
+    sanitize_asset_filename,
     sanitize_repo_name,
     sync_portfolio_to_directory_repo,
     upsert_portfolio_record,
+    validate_asset_upload,
     validate_html_upload,
     validate_username,
 )
@@ -86,6 +89,16 @@ def test_validate_username_normalizes_to_lowercase():
 def test_validate_username_rejects_invalid_characters():
     with pytest.raises(DeploymentError):
         validate_username("ansh prasad")
+
+
+def test_sanitize_asset_filename_normalizes_safe_name():
+    assert sanitize_asset_filename(" My Resume Final!.PDF ", {".pdf"}, "Resume") == "my-resume-final.pdf"
+
+
+def test_validate_asset_upload_rejects_unsupported_extension():
+    with pytest.raises(DeploymentError) as exc:
+        validate_asset_upload(PortfolioAssetUpload("profile.exe", b"content"), {".png"}, "Profile picture")
+    assert exc.value.stage == "validate"
 
 
 def test_get_config_value_prefers_environment_over_streamlit_secrets(monkeypatch):
@@ -166,6 +179,18 @@ def test_upload_index_html_payload_with_existing_sha():
 
     client.upload_content("portfolio-demo", "index.html", "<html>updated</html>", "Deploy portfolio index.html")
     assert session.calls[1]["json"]["sha"] == "abc123"
+
+
+def test_upload_binary_content_payload():
+    session = FakeSession([FakeResponse(404), FakeResponse(201, {})])
+    client = GitHubClient(config(), session=session)
+
+    client.upload_binary_content("portfolio-demo", "assets/profile.png", b"\x89PNG", "Upload profile picture")
+
+    put_call = session.calls[1]
+    assert put_call["method"] == "PUT"
+    assert put_call["url"] == "https://api.github.com/repos/octocat/portfolio-demo/contents/assets/profile.png"
+    assert base64.b64decode(put_call["json"]["content"]) == b"\x89PNG"
 
 
 def test_pages_url_generation():
@@ -349,6 +374,71 @@ def test_deploy_html_generates_pages_but_returns_custom_public_url(monkeypatch):
     directory_records = json.loads(directory_upload[4])
     assert directory_records[0]["portfolio_url"] == "https://octocat.github.io/ansh-portfolio/"
     assert "html_content" not in directory_records[0]
+
+
+def test_deploy_html_uploads_resume_and_profile_picture(monkeypatch):
+    class FakeDeployClient:
+        calls = []
+
+        def __init__(self, config):
+            self.config = config
+
+        def create_repo(self, requested_name):
+            self.calls.append(("create_repo", requested_name))
+            return requested_name
+
+        def upload_content(self, repo_name, path, content, commit_message, stage="upload_file"):
+            self.calls.append(("upload_content", repo_name, path, content, commit_message, stage))
+
+        def upload_binary_content(self, repo_name, path, content, commit_message, stage="upload_file"):
+            self.calls.append(("upload_binary_content", repo_name, path, content, commit_message, stage))
+
+        def enable_pages(self, repo_name):
+            self.calls.append(("enable_pages", repo_name))
+
+        def read_text_content_from_repo(self, owner, repo_name, path, branch, stage):
+            self.calls.append(("read_text_content_from_repo", owner, repo_name, path, branch, stage))
+            return "[]"
+
+        def upload_content_to_repo(self, owner, repo_name, path, content, commit_message, branch, stage):
+            self.calls.append(("upload_content_to_repo", owner, repo_name, path, content, commit_message, branch, stage))
+
+    FakeDeployClient.calls = []
+    monkeypatch.setattr("github_deployer.GitHubClient", FakeDeployClient)
+    monkeypatch.setattr("github_deployer.get_github_config", config)
+    monkeypatch.setattr(
+        "github_deployer.get_optional_directory_config",
+        lambda: DirectoryConfig(
+            owner="orgname",
+            repo="portfolio-directory",
+            branch="main",
+            data_path="data/portfolios.json",
+            site_url="https://yourportfolio.work",
+        ),
+    )
+    monkeypatch.setattr("github_deployer.save_deployment_history", lambda result: None)
+
+    result = deploy_html_portfolio(
+        html_content="<!doctype html><html><body>Ansh</body></html>",
+        repo_name="Ansh Portfolio",
+        username="AnshPrasad",
+        resume_upload=PortfolioAssetUpload(filename="Resume Final.PDF", content=b"%PDF"),
+        profile_picture_upload=PortfolioAssetUpload(filename="Profile Photo.JPG", content=b"jpg"),
+    )
+
+    assert result["success"] is True
+    assert result["profile_picture_url"] == "https://octocat.github.io/ansh-portfolio/assets/profile-photo.jpg"
+    assert result["resume_url"] == "https://octocat.github.io/ansh-portfolio/assets/resume-final.pdf"
+
+    asset_uploads = [call for call in FakeDeployClient.calls if call[0] == "upload_binary_content"]
+    assert asset_uploads == [
+        ("upload_binary_content", "ansh-portfolio", "assets/profile-photo.jpg", b"jpg", "Upload profile picture", "upload_profile_picture"),
+        ("upload_binary_content", "ansh-portfolio", "assets/resume-final.pdf", b"%PDF", "Upload resume", "upload_resume"),
+    ]
+
+    directory_upload = next(call for call in FakeDeployClient.calls if call[0] == "upload_content_to_repo")
+    directory_records = json.loads(directory_upload[4])
+    assert directory_records[0]["image"] == result["profile_picture_url"]
 
 
 def test_collaborator_invite_payload():

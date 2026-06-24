@@ -8,6 +8,7 @@ import streamlit as st
 
 from github_deployer import (
     HISTORY_DB_PATH,
+    PortfolioAssetUpload,
     check_github_auth,
     check_repo_create_access,
     deploy_html_portfolio,
@@ -105,6 +106,11 @@ def _render_deploy_result(payload: dict) -> None:
     elif not payload.get("directory_sync_enabled"):
         st.info("Directory sync is not configured, so only the GitHub repository was created.")
 
+    if payload.get("profile_picture_url"):
+        st.write(f"Profile picture: {payload['profile_picture_url']}")
+    if payload.get("resume_url"):
+        st.write(f"Resume: {payload['resume_url']}")
+
     collaborator = payload.get("collaborator")
     if payload.get("collaborator_invited") and collaborator:
         st.write(f"Collaborator invite sent to `{collaborator}`.")
@@ -180,6 +186,8 @@ st.caption("Required: HTML file, repository name, and username. Everything else 
 
 with st.form("deploy_form"):
     uploaded_file = st.file_uploader("Portfolio HTML file", type=["html"])
+    resume_file = st.file_uploader("Resume file", type=["pdf", "doc", "docx"])
+    profile_picture_file = st.file_uploader("Profile picture", type=["jpg", "jpeg", "png", "webp", "gif", "svg"])
     repo_name = st.text_input("Portfolio/repository name", placeholder="Ansh Prasad Portfolio")
     username = st.text_input("Public username route", placeholder="anshprasad")
     display_name = ""
@@ -224,6 +232,16 @@ if deploy_submitted:
                 role=role or None,
                 template_type=template_type or None,
                 image=image or None,
+                resume_upload=(
+                    PortfolioAssetUpload(filename=resume_file.name, content=resume_file.getvalue())
+                    if resume_file is not None
+                    else None
+                ),
+                profile_picture_upload=(
+                    PortfolioAssetUpload(filename=profile_picture_file.name, content=profile_picture_file.getvalue())
+                    if profile_picture_file is not None
+                    else None
+                ),
                 collaborator=collaborator or None,
                 collaborator_permission=collaborator_permission,
             )

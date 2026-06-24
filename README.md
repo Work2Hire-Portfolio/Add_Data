@@ -5,6 +5,7 @@ This folder is now ready to deploy as a Streamlit app.
 The app lets you:
 
 - upload a portfolio `.html` file
+- optionally upload a resume and profile picture into the same GitHub repository
 - create a GitHub repository automatically
 - store the uploaded portfolio in that repository
 - enable GitHub Pages for that repository as a background origin
@@ -80,6 +81,9 @@ From this folder:
 ```powershell
 streamlit run app.py
 ```
+
+Optional resume files are stored in the generated portfolio repo under `assets/` and may be `.pdf`, `.doc`, or `.docx`.
+Optional profile pictures are also stored under `assets/` and may be `.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, or `.svg`.
 
 ## Install Dependencies
 
